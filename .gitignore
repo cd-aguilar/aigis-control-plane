@@ -1,0 +1,15 @@
+.venv/
+venv/
+node_modules/
+__pycache__/
+*.log
+data/raw/*
+!data/raw/.gitkeep
+.env
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+.coverage
+htmlcov/
