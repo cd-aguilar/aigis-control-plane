@@ -58,12 +58,20 @@ aigis-control-plane/
 ```
 
 ## Estado actual
-Estructura de carpetas scaffoldeada (2026-08-17). Repo de GitHub identificado
-y renombrado a `cd-aguilar/aigis-control-plane` (antes `ai-agent-mcp-automation`),
-vacío — sin `git init`/commit/remoto conectado desde la carpeta local todavía.
-Sin código funcional: solo `__init__.py` vacíos y un `cli.py` con
-`NotImplementedError`. Sin gestor de dependencias definido. Detalle completo en
-`docs/ARCHITECTURE.md` sección "Estado actual".
+Fase 0/1 completa (2026-08-24): domain layer entero como Pydantic models --
+`TaskContract`, `ToolRequest`, `PolicyDecision`, `Attempt`, `TaskState`,
+`GateResult`, `Evidence`/`EnvironmentMetadata`, `Decision` -- en
+`src/aigis/domain/`, con 47 tests unitarios (100% verde) y `ruff check` limpio.
+La fórmula del Decision Engine (`contract_valid AND policy_ok AND tests_pass
+AND lint_pass AND scope_ok AND resource_limits_ok => PASS`) y el rechazo
+estructural de comandos tipo shell-string en `ToolRequest` ya están
+enforced por validadores Pydantic, no solo documentados.
+`pyproject.toml` definido (Pydantic, pytest, pytest-json-report, ruff).
+`git init` + primer commit hechos localmente; remoto `origin` conectado a
+`cd-aguilar/aigis-control-plane` pero sin push todavía.
+Sin implementar aún: Agent Runtime, Policy Engine, Sandbox, Quality Gates
+ejecutables, Evidence Bundle real, Decision Engine, Security Evaluation Suite.
+Detalle completo en `docs/ARCHITECTURE.md` sección "Estado actual".
 
 ## Decisiones clave
 - Circuit breaker desde el contrato: `max_iterations`, `max_runtime_seconds`,
@@ -115,7 +123,10 @@ Dario en sesión de Cowork:
   que la propia revisión señala como problema del portfolio.
 
 ## Próximos pasos
-- [ ] Fase 0/1: `TaskContract`, `TaskState`, `Attempt`, `QualityGate`, `Evidence`,
-      `Decision` como Pydantic models + tests unitarios en `src/aigis/domain/`
-- [ ] Definir gestor de dependencias (`pyproject.toml`)
-- [ ] `git init` + primer commit + conectar remoto `cd-aguilar/aigis-control-plane`
+- [x] Fase 0/1: domain models + tests unitarios en `src/aigis/domain/`
+- [x] Definir gestor de dependencias (`pyproject.toml`)
+- [x] `git init` + primer commit + conectar remoto `cd-aguilar/aigis-control-plane`
+- [ ] Decidir y hacer `git push -u origin main` (repo remoto sigue vacío)
+- [ ] Fase 2: Claude adapter + Agent Runtime (stateless reducer) + tools
+      (`read_file`, `patch_file`/`str_replace`, `run_command`) que emitan
+      `ToolRequest` real contra el domain layer ya construido
