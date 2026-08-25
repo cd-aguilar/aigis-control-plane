@@ -69,8 +69,20 @@ enforced por validadores Pydantic, no solo documentados.
 `pyproject.toml` definido (Pydantic, pytest, pytest-json-report, ruff).
 `git init` + primer commit hechos localmente; remoto `origin` conectado a
 `cd-aguilar/aigis-control-plane` pero sin push todavía.
-Sin implementar aún: Agent Runtime, Policy Engine, Sandbox, Quality Gates
-ejecutables, Evidence Bundle real, Decision Engine, Security Evaluation Suite.
+**Fase 2 completa (2026-08-25):** Agent Runtime como orquestador delgado sobre
+un reducer sin I/O (`src/aigis/agent/`) -- `Provider`/`ToolExecutor` son
+protocolos (Phase 3 los implementa con Policy Engine + Sandbox sin tocar el
+runtime). `ClaudeProvider` (`src/aigis/providers/claude.py`) arma el prompt,
+reconstruye la conversacion desde `TaskState` (stateless entre llamadas) y
+parsea la respuesta -- probado con stubs, sin red. Los 3 tools
+(`read_file`/`patch_file`/`run_command`) tienen su JSON schema y el mapeo a
+`ToolRequest` reusa las validaciones ya existentes (inyeccion de shell
+sigue rechazada). Se agrego `AgentClaim` al domain layer -- la
+"confesion" del agente de que termino queda registrada aparte de los
+Attempts, nunca la lee el Decision Engine (Fase 4). 88 tests unitarios
+(100% verde), `ruff check` limpio. `anthropic` sumado como dependencia base.
+Sin implementar aun: Policy Engine, Sandbox reales, Quality Gates ejecutables,
+Evidence Bundle real, Decision Engine, Security Evaluation Suite.
 Detalle completo en `docs/ARCHITECTURE.md` sección "Estado actual".
 
 ## Decisiones clave
@@ -126,7 +138,11 @@ Dario en sesión de Cowork:
 - [x] Fase 0/1: domain models + tests unitarios en `src/aigis/domain/`
 - [x] Definir gestor de dependencias (`pyproject.toml`)
 - [x] `git init` + primer commit + conectar remoto `cd-aguilar/aigis-control-plane`
-- [ ] Decidir y hacer `git push -u origin main` (repo remoto sigue vacío)
-- [ ] Fase 2: Claude adapter + Agent Runtime (stateless reducer) + tools
-      (`read_file`, `patch_file`/`str_replace`, `run_command`) que emitan
-      `ToolRequest` real contra el domain layer ya construido
+- [x] `git push -u origin main` hecho (2026-08-25)
+- [x] Fase 2: Claude adapter + Agent Runtime (reducer sin I/O) + tools que
+      emiten `ToolRequest` real contra el domain layer
+- [ ] Fase 3: Policy Engine determinista (ALLOW/DENY/REQUIRE_HUMAN sobre
+      path allowlist + command allowlist) + Sandbox (Docker, OverlayFS/CoW,
+      sin red) implementando el protocolo `ToolExecutor` ya definido en
+      `src/aigis/agent/executor.py` -- el runtime no deberia necesitar
+      cambios

@@ -8,6 +8,7 @@ license = { text = "MIT" }
 authors = [{ name = "Dario Aguilar" }]
 dependencies = [
     "pydantic>=2,<3",
+    "anthropic>=0.40,<1",
 ]
 
 [project.optional-dependencies]

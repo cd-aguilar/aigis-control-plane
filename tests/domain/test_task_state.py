@@ -1,6 +1,14 @@
 from datetime import datetime, timedelta, timezone
 
-from aigis.domain import Attempt, ExecutionOutcome, TaskContract, TaskState, ToolName, ToolRequest
+from aigis.domain import (
+    AgentClaim,
+    Attempt,
+    ExecutionOutcome,
+    TaskContract,
+    TaskState,
+    ToolName,
+    ToolRequest,
+)
 
 
 def _attempt(iteration: int) -> Attempt:
@@ -63,3 +71,17 @@ def test_limit_exceeded_reports_contract_and_actual_values(contract: TaskContrac
     breach = next(b for b in state.exceeded_limits(contract) if b.limit == "max_iterations")
     assert breach.contract_value == contract.max_iterations
     assert breach.actual_value == contract.max_iterations + 1
+
+
+def test_record_claim_appends_without_touching_status(contract: TaskContract) -> None:
+    state = TaskState(run_id="r1", task_id=contract.task_id)
+    claim = AgentClaim(iteration=1, message="I believe this is done.")
+
+    state.record_claim(claim)
+
+    assert state.agent_claims == [claim]
+    assert state.status == ExecutionOutcome.RUNNING
+    # record_claim must never touch attempts/tool_calls_count — a claim is
+    # not an Attempt and carries no execution evidence of its own.
+    assert state.attempts == []
+    assert state.tool_calls_count == 0

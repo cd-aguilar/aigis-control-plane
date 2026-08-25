@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 
+from aigis.domain.agent_claim import AgentClaim
 from aigis.domain.attempt import Attempt
 from aigis.domain.enums import ExecutionOutcome
 from aigis.domain.task_contract import TaskContract
@@ -36,6 +37,11 @@ class TaskState(BaseModel):
     tool_calls_count: int = 0
     files_changed: set[str] = Field(default_factory=set)
     attempts: list[Attempt] = Field(default_factory=list)
+    agent_claims: list[AgentClaim] = Field(
+        default_factory=list,
+        description="Every time the agent said it was done. Never read by the "
+        "Decision Engine — see AgentClaim's docstring.",
+    )
 
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -49,6 +55,13 @@ class TaskState(BaseModel):
         self.tool_calls_count += 1
         if changed_path is not None:
             self.files_changed.add(changed_path)
+        self.updated_at = datetime.now(timezone.utc)
+
+    def record_claim(self, claim: AgentClaim) -> None:
+        """Append an AgentClaim. Deliberately does NOT touch `status` — the
+        agent claiming done has no authority over the run's outcome.
+        """
+        self.agent_claims.append(claim)
         self.updated_at = datetime.now(timezone.utc)
 
     def elapsed_seconds(self, *, now: datetime | None = None) -> float:

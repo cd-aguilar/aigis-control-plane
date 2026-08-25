@@ -6,6 +6,7 @@ Engine, Sandbox, or any provider — those depend on this module, never the
 reverse.
 """
 
+from aigis.domain.agent_claim import AgentClaim
 from aigis.domain.attempt import Attempt
 from aigis.domain.decision import Decision
 from aigis.domain.enums import (
@@ -25,6 +26,7 @@ from aigis.domain.task_state import LimitExceeded, TaskState
 from aigis.domain.tool_request import ToolRequest
 
 __all__ = [
+    "AgentClaim",
     "Attempt",
     "Decision",
     "ExecutionOutcome",
