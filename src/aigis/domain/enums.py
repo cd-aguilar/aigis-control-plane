@@ -13,11 +13,13 @@ from enum import Enum
 class RiskLevel(str, Enum):
     """Risk classification of a task, per ARCHITECTURE.md section 7.
 
-    Not yet wired into automatic policy behavior in Phase 0 — the mapping
-    (LOW -> automatic, MEDIUM -> automatic + evidence, HIGH -> REQUIRE_HUMAN,
-    CRITICAL -> DENY) belongs to the Policy Engine (Phase 3). It is captured
-    here from the start so TaskContract never needs a breaking schema change
-    to support it later.
+    Wired into policy behavior in Phase 3 (``policy/engine.py``): CRITICAL
+    denies every request on the task outright, HIGH routes every request to
+    REQUIRE_HUMAN, before any path/command rule is even consulted. LOW and
+    MEDIUM fall through to the normal path/command allowlist checks —
+    "automatic" and "automatic + evidence" aren't distinct code paths today,
+    since every PolicyDecision is already captured as evidence regardless of
+    risk level.
     """
 
     LOW = "LOW"

@@ -1,0 +1,18 @@
+# Default command allowlist for the AIGIS Policy Engine.
+#
+# ARCHITECTURE.md section 10: the Policy Engine is "determinista y externo
+# al LLM" -- this file is that determinism made editable without touching
+# code. Anything NOT listed here is DENYed by default (policy_id CMD-001)
+# the moment a ToolRequest tries to run it as `executable` -- see
+# policy/engine.py::PolicyEngine._evaluate_command.
+#
+# Keep this list to exactly what the eval suite's tasks need (pytest, ruff,
+# a python interpreter). Least privilege (section 3.4): it is easier to add
+# an executable here later than to explain why the agent could run one it
+# never needed.
+
+allowed_commands:
+  - python
+  - python3
+  - pytest
+  - ruff
