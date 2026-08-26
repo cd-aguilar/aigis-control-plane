@@ -28,11 +28,10 @@ from aigis.domain import (
     ToolName,
 )
 
-# NOTE: confirm this against Anthropic's currently available model IDs
-# before actually running the agent — this is scaffolding, not a verified
-# production value. Override via the `model` constructor arg or the
-# AIGIS_CLAUDE_MODEL env var.
-_DEFAULT_MODEL = "claude-sonnet-4-5"
+# Confirmed against Anthropic's currently available model IDs as of
+# 2026-08-26. Override via the `model` constructor arg or the
+# AIGIS_CLAUDE_MODEL env var if this drifts out of date later.
+_DEFAULT_MODEL = "claude-sonnet-5"
 
 CODER_SYSTEM_PROMPT_TEMPLATE = """\
 You are the Coder agent inside the AIGIS Control Plane.
@@ -168,6 +167,15 @@ class ClaudeProvider:
         self._client = anthropic.Anthropic(api_key=api_key)
         self._model = model or os.environ.get("AIGIS_CLAUDE_MODEL", _DEFAULT_MODEL)
         self._max_tokens = max_tokens
+
+    @property
+    def model(self) -> str:
+        """Exposed so callers (the CLI/orchestrator) can record which model
+        actually ran a task in the Evidence Bundle's ``environment.json``
+        (ARCHITECTURE.md section 14, reproducibility) without reaching into
+        a private attribute.
+        """
+        return self._model
 
     def propose_action(self, contract: TaskContract, state: TaskState) -> ProviderAction:
         response = self._client.messages.create(

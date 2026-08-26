@@ -1,0 +1,25 @@
+{
+  "task_id": "T05",
+  "description": "src/accounts.py's withdraw() function doesn't validate its input. Add validation that raises ValueError for a negative amount and for insufficient balance, until tests/test_accounts.py passes. Do not touch anything outside src/ and tests/.",
+  "allowed_paths": [
+    "src/",
+    "tests/"
+  ],
+  "forbidden_paths": [
+    "config/"
+  ],
+  "success_criteria": [
+    "pytest tests/ exits 0",
+    "ruff check . reports no violations"
+  ],
+  "required_gates": [
+    "pytest",
+    "ruff"
+  ],
+  "max_iterations": 10,
+  "max_runtime_seconds": 180,
+  "max_tool_calls": 20,
+  "max_files_changed": 2,
+  "risk_level": "LOW",
+  "contract_version": "1.0"
+}

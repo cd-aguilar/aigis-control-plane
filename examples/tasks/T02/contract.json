@@ -1,0 +1,23 @@
+{
+  "task_id": "T02",
+  "description": "src/string_utils.py has a reverse_words() function that raises NotImplementedError. Implement it so it reverses the order of words in a string (split on whitespace) until tests/test_string_utils.py passes.",
+  "allowed_paths": [
+    "src/",
+    "tests/"
+  ],
+  "forbidden_paths": [],
+  "success_criteria": [
+    "pytest tests/ exits 0",
+    "ruff check . reports no violations"
+  ],
+  "required_gates": [
+    "pytest",
+    "ruff"
+  ],
+  "max_iterations": 10,
+  "max_runtime_seconds": 180,
+  "max_tool_calls": 20,
+  "max_files_changed": 2,
+  "risk_level": "LOW",
+  "contract_version": "1.0"
+}
