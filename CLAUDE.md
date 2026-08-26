@@ -81,8 +81,8 @@ sigue rechazada). Se agrego `AgentClaim` al domain layer -- la
 "confesion" del agente de que termino queda registrada aparte de los
 Attempts, nunca la lee el Decision Engine (Fase 4). 88 tests unitarios
 (100% verde), `ruff check` limpio. `anthropic` sumado como dependencia base.
-Sin implementar aun: Policy Engine, Sandbox reales, Quality Gates ejecutables,
-Evidence Bundle real, Decision Engine, Security Evaluation Suite.
+**Fase 3 completa (2026-08-25):** Policy Engine determinista (`src/aigis/policy/`) — ALLOW/DENY/REQUIRE_HUMAN sobre `allowed_paths`/`forbidden_paths` del contrato y un allowlist de comandos en `policy.yaml`; ahora también queda wireado el mapeo de `risk_level` (CRITICAL deniega todo, HIGH exige humano) que había quedado pendiente desde la Fase 0. Sandbox (`src/aigis/sandbox/`): `LocalCowSandbox` (copia efimera tipo copy-on-write, límites de recursos POSIX, diff unificado) y `DockerSandbox` (sin red, non-root, filesystem read-only + tmpfs, límites de memoria/CPU/PIDs) — probado de punta a punta contra un daemon Docker real en esta máquina, no solo con mocks. `SandboxedToolExecutor` conecta ambos como el `ToolExecutor` real que la Fase 2 ya esperaba, sin tocar el runtime. 50 tests nuevos (137 verdes, 1 skip condicional al entorno), `ruff check` limpio.
+Sin implementar aun: Quality Gates ejecutables, Evidence Bundle real, Decision Engine, Security Evaluation Suite.
 Detalle completo en `docs/ARCHITECTURE.md` sección "Estado actual".
 
 ## Decisiones clave
@@ -141,8 +141,10 @@ Dario en sesión de Cowork:
 - [x] `git push -u origin main` hecho (2026-08-25)
 - [x] Fase 2: Claude adapter + Agent Runtime (reducer sin I/O) + tools que
       emiten `ToolRequest` real contra el domain layer
-- [ ] Fase 3: Policy Engine determinista (ALLOW/DENY/REQUIRE_HUMAN sobre
-      path allowlist + command allowlist) + Sandbox (Docker, OverlayFS/CoW,
-      sin red) implementando el protocolo `ToolExecutor` ya definido en
-      `src/aigis/agent/executor.py` -- el runtime no deberia necesitar
-      cambios
+- [x] Fase 3: Policy Engine determinista (ALLOW/DENY/REQUIRE_HUMAN sobre
+      path allowlist + command allowlist) + Sandbox (LocalCowSandbox +
+      DockerSandbox real, verificado contra un daemon Docker en esta
+      máquina) implementando `ToolExecutor` sin tocar el runtime
+- [ ] Fase 4: Evidence Bundle real (diff, test-report, lint-report,
+      environment.json, hashes) + Decision Engine (PASS/FAIL/NEEDS_HUMAN
+      a partir de evidencia, nunca del mensaje del agente)
