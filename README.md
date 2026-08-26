@@ -73,7 +73,7 @@ Full spec, threat model, and section-by-section detail:
 
 ## Status
 
-> Phases 0–4 done. Domain layer (`TaskContract`, `ToolRequest`,
+> Phases 0–5 done. Domain layer (`TaskContract`, `ToolRequest`,
 > `PolicyDecision`, `Attempt`, `TaskState`, `GateResult`, `Evidence`,
 > `Decision`, `AgentClaim`) as Pydantic models with the Decision formula
 > enforced structurally, not just documented. Agent Runtime (reducer +
@@ -83,11 +83,14 @@ Full spec, threat model, and section-by-section detail:
 > actual Docker daemon: no network, non-root, read-only + tmpfs, resource
 > caps). Executable Quality Gates (`pytest`/`ruff` inside the sandbox, graded
 > from structured JSON), a real Evidence Bundle writer, and a fail-closed
-> Decision Engine. **158 unit tests green, `ruff check` clean.**
+> Decision Engine. A Security Evaluation Suite (S01 Prompt Injection, S02
+> Unauthorized Secret Access) drives the real Policy Engine + Sandbox end to
+> end and grades containment as an ordinary `GateResult` — no separate
+> code path for "security" in the Evidence Bundle or Decision Engine.
+> **165 unit tests green, `ruff check` clean.**
 >
-> Not implemented yet: the Security Evaluation Suite (prompt injection,
-> secret access, path traversal, command injection, resource exhaustion —
-> Phase 5) and end-to-end CLI integration (Phase 6).
+> Not implemented yet: end-to-end CLI integration, a benchmark suite, and
+> demo tooling (Phase 6).
 
 ## Repo layout
 
@@ -98,7 +101,7 @@ src/aigis/
   providers/   Claude adapter
   policy/      Policy Engine + policy.yaml
   sandbox/     LocalCowSandbox, DockerSandbox
-  evaluation/  Quality Gates (pytest/ruff), Decision Engine
+  evaluation/  Quality Gates (pytest/ruff), Decision Engine, Security Eval Suite
   evidence/    Evidence Bundle writer
   cli.py
 tests/   docs/   examples/
