@@ -452,19 +452,21 @@ No incorporar inicialmente: LangChain, LangGraph, Chroma, Redis, Postgres, Kafka
 **Completado:**
 - Arquitectura conceptual y tesis del proyecto consolidadas (este documento).
 - Alcance inicial definido.
-- Estructura de repositorio scaffoldeada — tanto en `Proyectos/06-Consultora-Aigis/aigis-control-plane/` (máquina de Dario) como en el workspace de esta sesión, con los módulos principales de `src/aigis/` ya definidos (`domain`, `agent`, `providers`, `policy`, `sandbox`, `evaluation`, `evidence`) aunque todavía vacíos.
 - `CLAUDE.md` y `README.md` del proyecto escritos.
-- Repositorio de GitHub identificado y renombrado a **`cd-aguilar/aigis-control-plane`** (antes `ai-agent-mcp-automation`).
+- Repositorio de GitHub identificado y renombrado a **`cd-aguilar/aigis-control-plane`**; `git init` + primer commit hechos, remoto conectado y con `git push -u origin main` ya realizado (2026-08-25).
+- Gestor de dependencias definido (`pyproject.toml`: Pydantic, pytest, pytest-json-report, ruff, pyyaml, anthropic).
+- **Fase 0/1 — Core Control Plane (2026-08-24):** domain layer completo como Pydantic models en `src/aigis/domain/` — `TaskContract`, `ToolRequest`, `PolicyDecision`, `Attempt`, `TaskState`, `GateResult`, `Evidence`/`EnvironmentMetadata`, `Decision`. La fórmula del Decision Engine (`contract_valid AND policy_ok AND tests_pass AND lint_pass AND scope_ok AND resource_limits_ok => PASS`) y el rechazo estructural de comandos tipo shell-string en `ToolRequest` ya están enforced por validadores Pydantic.
+- **Fase 2 — Agent Execution (2026-08-25):** Agent Runtime como orquestador delgado sobre un reducer sin I/O (`src/aigis/agent/`); `Provider`/`ToolExecutor` como protocolos. `ClaudeProvider` (`src/aigis/providers/claude.py`) arma el prompt, reconstruye la conversación desde `TaskState` (stateless entre llamadas) y parsea la respuesta. Los 3 tools (`read_file`/`patch_file`/`run_command`) tienen su JSON schema y mapean a `ToolRequest`. `AgentClaim` agregado al domain layer — nunca leído por el Decision Engine.
+- **Fase 3 — Security Boundary (2026-08-25):** Policy Engine determinista (`src/aigis/policy/`) — ALLOW/DENY/REQUIRE_HUMAN sobre `allowed_paths`/`forbidden_paths` del contrato y un allowlist de comandos en `policy.yaml`, con el mapeo de `risk_level` (CRITICAL deniega todo, HIGH exige humano) wireado. Sandbox (`src/aigis/sandbox/`): `LocalCowSandbox` (copia efímera copy-on-write, límites de recursos POSIX, diff unificado) y `DockerSandbox` (sin red, non-root, filesystem read-only + tmpfs, límites de memoria/CPU/PIDs) — probado contra un daemon Docker real. `SandboxedToolExecutor` conecta ambos como el `ToolExecutor` real que la Fase 2 esperaba.
+- **Fase 4 — Evidence & Evaluation (2026-08-26):** Quality Gates ejecutables (`src/aigis/evaluation/gates.py`) — `PytestGate`/`RuffGate` corren dentro del `Sandbox` protocol y se califican desde salida estructurada (`pytest-json-report`, `ruff --output-format json`), nunca regex sobre stdout, per sección 12. Evidence Bundle real (`src/aigis/evidence/bundle.py`): `EvidenceBundleWriter` persiste a disco el layout completo de la sección 13 (`task.json`, `state.json`, `trace.jsonl`, `events.jsonl`, `diff.patch`, `test-report.json`/`lint-report.json`, `environment.json`, `manifest.json`, `hashes.json` con SHA-256 por artefacto), con `decision.json` escrito aparte por no poder autorreferenciar su propio hash. Decision Engine (`src/aigis/evaluation/decision_engine.py`): computa los seis booleanos de la fórmula de la sección 3.2 y resuelve fail-closed (sección 3.6) — `REQUIRE_HUMAN` o un gate requerido sin resultado escalan a `NEEDS_HUMAN`; un `DENY` normal no bloquea un `PASS` legítimo, tal como describe el ejemplo de la sección 15.
+- Estado de tests verificado el 2026-08-26: **158 tests pasando, 1 skip condicional al entorno**, `ruff check` limpio.
 
 **Pendiente:**
-- Todos los domain models (`TaskContract`, `TaskState`, `Attempt`, `ToolRequest`, `PolicyDecision`, `Evidence`, `Decision`) y sus tests.
-- Agent Runtime, Policy Engine, Sandbox, Quality Gates, Evidence Bundle, Decision Engine — sin implementar.
-- Security Evaluation Suite — sin implementar.
-- `git init` / primer commit / conexión del remoto local con `cd-aguilar/aigis-control-plane` (el repo de GitHub existe pero está vacío, y la carpeta local no tiene aún historial git).
-- Gestor de dependencias — sin definir (`pyproject.toml`/`requirements.txt` no creados todavía).
-- Documentación técnica completa (`ARCHITECTURE.md` ya cubierto por este documento; faltan `SECURITY.md`, `EVALUATION.md`, `THREAT-MODEL.md` como documentos separados si se decide desglosarlos).
+- Fase 5 — Security Evaluation Suite (prompt injection, secret access, path traversal, command injection, resource exhaustion) — sin implementar.
+- Fase 6 — Integration (runs end-to-end, CLI real, benchmark suite, métricas, demo, docs).
+- Documentación técnica separada (`SECURITY.md`, `EVALUATION.md`, `THREAT-MODEL.md`) si se decide desglosarlos de este documento.
 
-El repositorio todavía parte prácticamente desde cero en cuanto a código funcional.
+Detalle línea por línea de cada fase completada: `CLAUDE.md`, sección "Estado actual".
 
 ---
 

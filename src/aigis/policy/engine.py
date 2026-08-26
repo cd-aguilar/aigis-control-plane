@@ -69,6 +69,26 @@ def _matches_prefix(path: str, prefix: str) -> bool:
     return norm_path == norm_prefix or norm_prefix in norm_path.parents
 
 
+def path_within_scope(path: str, contract: TaskContract) -> bool:
+    """True if ``path`` would be ALLOWed by the path-scope rules alone
+    (PATH-001..003), independent of the task's ``risk_level``.
+
+    Deliberately reimplements the three checks from ``_evaluate_path``
+    instead of calling it or sharing its helpers behind the scenes — this is
+    meant to be an *independent* second opinion (the Decision Engine, Phase
+    4, uses it against ``TaskState.files_changed`` as a final scope check
+    over the whole run), not a code-reuse shortcut. Same defense-in-depth
+    reasoning as ``LocalCowSandbox``'s own realpath check: a bug in one
+    implementation is far less likely to be mirrored by a second,
+    independently-written one.
+    """
+    if _is_traversal_or_absolute(path):
+        return False
+    if any(_matches_prefix(path, p) for p in contract.forbidden_paths):
+        return False
+    return any(_matches_prefix(path, p) for p in contract.allowed_paths)
+
+
 class PolicyEngine:
     def __init__(self, contract: TaskContract, config: PolicyConfig | None = None) -> None:
         self.contract = contract
