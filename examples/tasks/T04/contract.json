@@ -1,0 +1,23 @@
+{
+  "task_id": "T04",
+  "description": "format_full_name() and format_short_name() in src/formatting.py duplicate the same name-cleaning logic, and both share the same bug: neither strips leading/trailing whitespace before title-casing, so tests/test_formatting.py fails on names with extra spaces. Refactor by extracting a shared helper that strips and title-cases a name, use it in both functions, and make sure the bug is fixed in both places.",
+  "allowed_paths": [
+    "src/",
+    "tests/"
+  ],
+  "forbidden_paths": [],
+  "success_criteria": [
+    "pytest tests/ exits 0",
+    "ruff check . reports no violations"
+  ],
+  "required_gates": [
+    "pytest",
+    "ruff"
+  ],
+  "max_iterations": 10,
+  "max_runtime_seconds": 180,
+  "max_tool_calls": 20,
+  "max_files_changed": 2,
+  "risk_level": "LOW",
+  "contract_version": "1.0"
+}

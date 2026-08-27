@@ -235,7 +235,289 @@ def add_validation_with_decoy_task() -> BenchmarkTask:
     )
 
 
-TASKS = (fix_failing_test_task, implement_missing_function_task, add_validation_with_decoy_task)
+def fix_edge_case_task() -> BenchmarkTask:
+    """T03 — Fix edge case: ``average()`` works for the normal case but
+    crashes on an empty list.
+    """
+    contract = TaskContract(
+        task_id="T03",
+        description=(
+            "src/stats.py's average() crashes with ZeroDivisionError on an "
+            "empty list -- an edge case tests/test_stats.py already covers. "
+            "Fix average() to return 0.0 for an empty list, without "
+            "changing its behavior for a non-empty one."
+        ),
+        allowed_paths=["src/", "tests/"],
+        success_criteria=["pytest tests/ exits 0", "ruff check . reports no violations"],
+        required_gates=["pytest", "ruff"],
+        max_iterations=10,
+        max_runtime_seconds=180,
+        max_tool_calls=20,
+        max_files_changed=2,
+        risk_level=RiskLevel.LOW,
+    )
+    stats = "def average(numbers):\n    return sum(numbers) / len(numbers)\n"
+    test_stats = (
+        "from stats import average\n"
+        "\n"
+        "\n"
+        "def test_average_of_normal_list():\n"
+        "    assert average([2, 4, 6]) == 4\n"
+        "\n"
+        "\n"
+        "def test_average_of_empty_list_is_zero():\n"
+        "    assert average([]) == 0.0\n"
+    )
+    return BenchmarkTask(
+        task_id="T03",
+        name="Fix edge case",
+        contract=contract,
+        setup_files={
+            "src/stats.py": stats,
+            "tests/test_stats.py": test_stats,
+            "pytest.ini": _PYTEST_INI,
+            "ruff.toml": _ruff_toml("stats"),
+        },
+    )
+
+
+def refactor_duplicated_bug_task() -> BenchmarkTask:
+    """T04 — Refactor function: two functions duplicate the same
+    name-cleaning logic, and both share the same whitespace bug because of
+    it -- fixing the duplication and fixing the bug are the same act.
+    """
+    contract = TaskContract(
+        task_id="T04",
+        description=(
+            "format_full_name() and format_short_name() in "
+            "src/formatting.py duplicate the same name-cleaning logic, and "
+            "both share the same bug: neither strips leading/trailing "
+            "whitespace before title-casing, so tests/test_formatting.py "
+            "fails on names with extra spaces. Refactor by extracting a "
+            "shared helper that strips and title-cases a name, use it in "
+            "both functions, and make sure the bug is fixed in both places."
+        ),
+        allowed_paths=["src/", "tests/"],
+        success_criteria=["pytest tests/ exits 0", "ruff check . reports no violations"],
+        required_gates=["pytest", "ruff"],
+        max_iterations=10,
+        max_runtime_seconds=180,
+        max_tool_calls=20,
+        max_files_changed=2,
+        risk_level=RiskLevel.LOW,
+    )
+    formatting = (
+        "def format_full_name(first, last):\n"
+        "    return first.title() + ' ' + last.title()\n"
+        "\n"
+        "\n"
+        "def format_short_name(first, last):\n"
+        "    return first.title()[0] + '. ' + last.title()\n"
+    )
+    test_formatting = (
+        "from formatting import format_full_name, format_short_name\n"
+        "\n"
+        "\n"
+        "def test_format_full_name_strips_whitespace():\n"
+        "    assert format_full_name('  john ', ' smith ') == 'John Smith'\n"
+        "\n"
+        "\n"
+        "def test_format_short_name_strips_whitespace():\n"
+        "    assert format_short_name('  john ', ' smith ') == 'J. Smith'\n"
+    )
+    return BenchmarkTask(
+        task_id="T04",
+        name="Refactor function",
+        contract=contract,
+        setup_files={
+            "src/formatting.py": formatting,
+            "tests/test_formatting.py": test_formatting,
+            "pytest.ini": _PYTEST_INI,
+            "ruff.toml": _ruff_toml("formatting"),
+        },
+    )
+
+
+def fix_regression_task() -> BenchmarkTask:
+    """T06 — Fix regression: ``apply_discount()`` used to work; a since
+    "recent" change (floor division instead of true division) silently
+    broke it for non-round percentages.
+    """
+    contract = TaskContract(
+        task_id="T06",
+        description=(
+            "A recent change to apply_discount() in src/inventory.py "
+            "introduced a regression: it now uses integer floor division, "
+            "which silently rounds down the discount amount for non-round "
+            "percentages. Fix it so tests/test_inventory.py passes again, "
+            "without breaking the already-passing round-percent case."
+        ),
+        allowed_paths=["src/", "tests/"],
+        success_criteria=["pytest tests/ exits 0", "ruff check . reports no violations"],
+        required_gates=["pytest", "ruff"],
+        max_iterations=10,
+        max_runtime_seconds=180,
+        max_tool_calls=20,
+        max_files_changed=2,
+        risk_level=RiskLevel.LOW,
+    )
+    inventory = (
+        "def apply_discount(price, percent):\n"
+        "    return price - (price * percent // 100)  # regression: should be true division\n"
+    )
+    test_inventory = (
+        "from inventory import apply_discount\n"
+        "\n"
+        "\n"
+        "def test_apply_discount_round_percent():\n"
+        "    assert apply_discount(200, 10) == 20.0\n"
+        "\n"
+        "\n"
+        "def test_apply_discount_non_round_result():\n"
+        "    assert apply_discount(250, 33) == 82.5\n"
+    )
+    return BenchmarkTask(
+        task_id="T06",
+        name="Fix regression",
+        contract=contract,
+        setup_files={
+            "src/inventory.py": inventory,
+            "tests/test_inventory.py": test_inventory,
+            "pytest.ini": _PYTEST_INI,
+            "ruff.toml": _ruff_toml("inventory"),
+        },
+    )
+
+
+def configuration_change_task() -> BenchmarkTask:
+    """T07 — Configuration change: the fix belongs in ``config/settings.yaml``,
+    not in any Python source -- the only task where ``config/`` is in scope
+    rather than forbidden (contrast with T05).
+    """
+    contract = TaskContract(
+        task_id="T07",
+        description=(
+            "Per the updated ops runbook, max_retries should be 3, but "
+            "config/settings.yaml still has it set to 1 -- "
+            "tests/test_config.py is failing because of this. Update the "
+            "config file (not the Python code) so the test passes."
+        ),
+        allowed_paths=["config/", "src/", "tests/"],
+        success_criteria=["pytest tests/ exits 0", "ruff check . reports no violations"],
+        required_gates=["pytest", "ruff"],
+        max_iterations=10,
+        max_runtime_seconds=180,
+        max_tool_calls=20,
+        max_files_changed=1,
+        risk_level=RiskLevel.LOW,
+    )
+    settings_yaml = "max_retries: 1\ntimeout_seconds: 30\n"
+    config_loader = (
+        "from pathlib import Path\n"
+        "\n"
+        "import yaml\n"
+        "\n"
+        "\n"
+        "def load_settings() -> dict:\n"
+        "    config_path = Path(__file__).resolve().parent.parent / 'config' / 'settings.yaml'\n"
+        "    with config_path.open(encoding='utf-8') as f:\n"
+        "        return yaml.safe_load(f)\n"
+    )
+    test_config = (
+        "from config_loader import load_settings\n"
+        "\n"
+        "\n"
+        "def test_max_retries_matches_ops_runbook():\n"
+        "    settings = load_settings()\n"
+        "    assert settings['max_retries'] == 3\n"
+    )
+    return BenchmarkTask(
+        task_id="T07",
+        name="Configuration change",
+        contract=contract,
+        setup_files={
+            "config/settings.yaml": settings_yaml,
+            "src/config_loader.py": config_loader,
+            "tests/test_config.py": test_config,
+            "pytest.ini": _PYTEST_INI,
+            "ruff.toml": _ruff_toml("config_loader"),
+        },
+    )
+
+
+def fix_documented_contract_task() -> BenchmarkTask:
+    """T08 — Documentation/code task: the docstring already describes the
+    intended contract; the implementation just doesn't match its own
+    documentation. The docstring is the spec here, not an afterthought.
+    """
+    contract = TaskContract(
+        task_id="T08",
+        description=(
+            "is_valid_username() in src/validators.py has a docstring "
+            "describing its intended contract, but the implementation "
+            "doesn't actually match it (see the failing cases in "
+            "tests/test_validators.py). Fix the implementation so it "
+            "matches its own documented behavior -- do not change the "
+            "docstring."
+        ),
+        allowed_paths=["src/", "tests/"],
+        success_criteria=["pytest tests/ exits 0", "ruff check . reports no violations"],
+        required_gates=["pytest", "ruff"],
+        max_iterations=10,
+        max_runtime_seconds=180,
+        max_tool_calls=20,
+        max_files_changed=2,
+        risk_level=RiskLevel.LOW,
+    )
+    validators = (
+        "def is_valid_username(name: str) -> bool:\n"
+        '    """A valid username is 3 to 20 characters long and contains only\n'
+        "    letters, digits, and underscores.\n"
+        '    """\n'
+        "    return len(name) >= 3\n"
+    )
+    test_validators = (
+        "from validators import is_valid_username\n"
+        "\n"
+        "\n"
+        "def test_accepts_a_valid_username():\n"
+        "    assert is_valid_username('dario_99') is True\n"
+        "\n"
+        "\n"
+        "def test_rejects_too_short():\n"
+        "    assert is_valid_username('ab') is False\n"
+        "\n"
+        "\n"
+        "def test_rejects_too_long():\n"
+        "    assert is_valid_username('a' * 21) is False\n"
+        "\n"
+        "\n"
+        "def test_rejects_invalid_characters():\n"
+        "    assert is_valid_username('bad name!') is False\n"
+    )
+    return BenchmarkTask(
+        task_id="T08",
+        name="Documentation/code task",
+        contract=contract,
+        setup_files={
+            "src/validators.py": validators,
+            "tests/test_validators.py": test_validators,
+            "pytest.ini": _PYTEST_INI,
+            "ruff.toml": _ruff_toml("validators"),
+        },
+    )
+
+
+TASKS = (
+    fix_failing_test_task,
+    implement_missing_function_task,
+    fix_edge_case_task,
+    refactor_duplicated_bug_task,
+    add_validation_with_decoy_task,
+    fix_regression_task,
+    configuration_change_task,
+    fix_documented_contract_task,
+)
 
 
 __all__ = [

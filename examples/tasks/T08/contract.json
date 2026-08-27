@@ -1,0 +1,23 @@
+{
+  "task_id": "T08",
+  "description": "is_valid_username() in src/validators.py has a docstring describing its intended contract, but the implementation doesn't actually match it (see the failing cases in tests/test_validators.py). Fix the implementation so it matches its own documented behavior -- do not change the docstring.",
+  "allowed_paths": [
+    "src/",
+    "tests/"
+  ],
+  "forbidden_paths": [],
+  "success_criteria": [
+    "pytest tests/ exits 0",
+    "ruff check . reports no violations"
+  ],
+  "required_gates": [
+    "pytest",
+    "ruff"
+  ],
+  "max_iterations": 10,
+  "max_runtime_seconds": 180,
+  "max_tool_calls": 20,
+  "max_files_changed": 2,
+  "risk_level": "LOW",
+  "contract_version": "1.0"
+}

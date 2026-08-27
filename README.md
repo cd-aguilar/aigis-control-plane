@@ -89,17 +89,20 @@ Full spec, threat model, and section-by-section detail:
 > code path for "security" in the Evidence Bundle or Decision Engine.
 > An orchestrator (`run_task`) wires the whole mechanism into one call, and
 > a real CLI (`aigis run <contract.json> <repo>`) is installed and wired to
-> it — verified end to end (fails clean with a one-line message, not a
-> traceback, exactly at the "no API key" boundary). 3 of 8 functional
-> benchmark tasks (T01, T02, T05 — the last with an adversarial decoy file
-> outside scope) are runnable today from `examples/tasks/`.
-> **186 unit tests green, `ruff check` clean.**
+> it. **Verified with a real run:** `aigis run examples/tasks/T01/contract.json
+> examples/tasks/T01/repo` against the actual Claude API returned `[PASS]` —
+> the first end-to-end confirmation that the whole mechanism works with a
+> real LLM, not only the deterministic `ScriptedProvider` the automated
+> tests use. All 8 functional benchmark tasks from section 18 (T01-T08) are
+> runnable today from `examples/tasks/` — T05 with an adversarial decoy file
+> outside scope, T07 with `config/` deliberately in scope instead of
+> forbidden (contrast with T05).
+> **196 unit tests green, `ruff check` clean.**
 >
-> Not implemented yet: the remaining 5 benchmark tasks, metrics aggregation
-> across runs (section 19), and a verified live run against the real Claude
-> API — that needs a real `ANTHROPIC_API_KEY`, not available in the
-> environment this was built in. See `examples/tasks/README.md` to run one
-> yourself.
+> Not implemented yet: running T02-T08 live (only T01 confirmed so far) and
+> metrics aggregation across runs (section 19) — that needs several real
+> runs first to have data to aggregate. See `examples/tasks/README.md` to
+> run one yourself.
 
 ## Repo layout
 
@@ -111,7 +114,7 @@ src/aigis/
   policy/      Policy Engine + policy.yaml
   sandbox/     LocalCowSandbox, DockerSandbox
   evaluation/  Quality Gates (pytest/ruff), Decision Engine, Security Eval
-               Suite, functional benchmark tasks (T01/T02/T05)
+               Suite, functional benchmark tasks (T01-T08)
   evidence/    Evidence Bundle writer
   orchestrator.py   wires the whole mechanism into one run_task() call
   cli.py            `aigis run <contract.json> <repo>`

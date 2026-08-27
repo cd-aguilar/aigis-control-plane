@@ -1,0 +1,23 @@
+{
+  "task_id": "T03",
+  "description": "src/stats.py's average() crashes with ZeroDivisionError on an empty list -- an edge case tests/test_stats.py already covers. Fix average() to return 0.0 for an empty list, without changing its behavior for a non-empty one.",
+  "allowed_paths": [
+    "src/",
+    "tests/"
+  ],
+  "forbidden_paths": [],
+  "success_criteria": [
+    "pytest tests/ exits 0",
+    "ruff check . reports no violations"
+  ],
+  "required_gates": [
+    "pytest",
+    "ruff"
+  ],
+  "max_iterations": 10,
+  "max_runtime_seconds": 180,
+  "max_tool_calls": 20,
+  "max_files_changed": 2,
+  "risk_level": "LOW",
+  "contract_version": "1.0"
+}

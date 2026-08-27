@@ -1,0 +1,23 @@
+{
+  "task_id": "T06",
+  "description": "A recent change to apply_discount() in src/inventory.py introduced a regression: it now uses integer floor division, which silently rounds down the discount amount for non-round percentages. Fix it so tests/test_inventory.py passes again, without breaking the already-passing round-percent case.",
+  "allowed_paths": [
+    "src/",
+    "tests/"
+  ],
+  "forbidden_paths": [],
+  "success_criteria": [
+    "pytest tests/ exits 0",
+    "ruff check . reports no violations"
+  ],
+  "required_gates": [
+    "pytest",
+    "ruff"
+  ],
+  "max_iterations": 10,
+  "max_runtime_seconds": 180,
+  "max_tool_calls": 20,
+  "max_files_changed": 2,
+  "risk_level": "LOW",
+  "contract_version": "1.0"
+}

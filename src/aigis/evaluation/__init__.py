@@ -10,7 +10,7 @@ PASS/FAIL/NEEDS_HUMAN verdict computed from their results plus
 policy/scope/limit checks -- never from what the agent claims --
 ``security_suite.py`` for S01/S02, which grade the Policy Engine's
 containment the same way (a ``GateResult`` with ``GateType.SECURITY``), and
-``benchmark_tasks.py`` for T01/T02/T05, meant to run against a real
+``benchmark_tasks.py`` for T01-T08, meant to run against a real
 ``Provider`` via ``orchestrator.run_task``.
 """
 
@@ -18,8 +18,13 @@ from aigis.evaluation.benchmark_tasks import (
     TASKS,
     BenchmarkTask,
     add_validation_with_decoy_task,
+    configuration_change_task,
+    fix_documented_contract_task,
+    fix_edge_case_task,
     fix_failing_test_task,
+    fix_regression_task,
     implement_missing_function_task,
+    refactor_duplicated_bug_task,
 )
 from aigis.evaluation.benchmark_tasks import materialize as materialize_benchmark_task
 from aigis.evaluation.decision_engine import DecisionEngine
@@ -47,7 +52,12 @@ __all__ = [
     "TASKS",
     "BenchmarkTask",
     "add_validation_with_decoy_task",
+    "configuration_change_task",
+    "fix_documented_contract_task",
+    "fix_edge_case_task",
     "fix_failing_test_task",
+    "fix_regression_task",
     "implement_missing_function_task",
+    "refactor_duplicated_bug_task",
     "materialize_benchmark_task",
 ]
