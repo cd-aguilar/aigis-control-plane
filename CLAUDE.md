@@ -92,6 +92,7 @@ Attempts, nunca la lee el Decision Engine (Fase 4). 88 tests unitarios
 **Fase 5 completa (2026-08-26):** Security Evaluation Suite (`src/aigis/evaluation/security_suite.py`) — S01 (Prompt Injection) y S02 (Unauthorized Secret Access), los dos evals del alcance inicial (S03-S05 quedan como evolución futura). Cada escenario corre el `AgentRuntime` real contra un `PolicyEngine` + `LocalCowSandbox` reales (sin mocks) manejado por un `ScriptedProvider` que reproduce de forma determinista "el agente ya decidió intentar la acción prohibida" — deliberadamente no intenta que un LLM real caiga en la inyección (eso sería no determinista y es una pregunta sobre el modelo, no sobre el sistema); lo que se mide es el contenimiento del Policy Engine, no el juicio del LLM. Cada escenario se califica como un `GateResult` normal (`GateType.SECURITY`), indistinguible para `EvidenceBundleWriter`/`DecisionEngine` de un gate de pytest/ruff — un security eval se persiste en `security-report.json` igual que cualquier otro. Se agregaron controles negativos (contrato permisivo → el harness reporta `passed=False`) para probar que el arnés puede fallar, no solo que da PASS por casualidad. 7 tests nuevos (165 verdes, 1 skip condicional al entorno), `ruff check` limpio.
 **Fase 6 en progreso (2026-08-26/27):** Orquestador end-to-end (`src/aigis/orchestrator.py::run_task`) — la primera pieza que corre el mecanismo completo de punta a punta: Agent Runtime → Policy Engine/Sandbox → Quality Gates (solo los declarados en `required_gates`) → Evidence Bundle → Decision Engine, en una sola llamada. CLI real (`src/aigis/cli.py`, comando `aigis run <contract.json> <repo> [--sandbox local|docker] [--model] [--json]`) instalado como entry point. Se corrigió el model ID desactualizado de `ClaudeProvider` (`claude-sonnet-4-5` → `claude-sonnet-5`) y se le agregó una property pública `.model`. **Confirmado con una corrida real (27 ago 2026):** `aigis run examples/tasks/T01/contract.json examples/tasks/T01/repo` contra la API real de Claude devolvió `[PASS]` — primera prueba de que todo el mecanismo funciona con un LLM real, no solo con los `ScriptedProvider` deterministas de los tests. **Las 8 tareas de benchmark de la sección 18 completas** (`src/aigis/evaluation/benchmark_tasks.py`): T01 fix failing test, T02 implement missing function, T03 fix edge case, T04 refactor (dos funciones duplicadas comparten el mismo bug), T05 add validation (con condición adversarial: archivo de secretos fuera de scope), T06 fix regression (floor division), T07 configuration change (el único donde `config/` está en scope en vez de prohibido, a propósito en contraste con T05), T08 documentation/code task (la implementación no coincide con su propio docstring). Materializadas en `examples/tasks/<id>/` vía `scripts/generate_examples.py` (fuente de verdad en código). Se agregó `.gitattributes` (`* text=auto eol=lf`) para evitar ruido de fin de línea CRLF/LF en Windows. 31 tests nuevos desde Fase 5 (196 verdes, 1 skip condicional al entorno), `ruff check` limpio.
 Sin implementar aun: correr T02-T08 en vivo contra la API real (solo T01 confirmado), agregación de métricas (sección 19: success rate, cost-to-pass, etc. — requiere varias corridas reales para tener datos que agregar).
+**Post-Fase-6, higiene sobre revisión externa (27 ago 2026, ver sección más abajo):** `PolicyDecision` suma `policy_version` (hash de 12 hex del `PolicyConfig` cargado, estampado por `PolicyEngine` en cada decisión — trazabilidad por decisión individual, no solo a nivel de `environment.json`). El decoy secret de T05 (`config/secrets.env`) dejó de tener forma de clave real de Stripe (`sk_live_...`, patrón que dispara secret scanners) — ahora `AIGIS_TEST_SECRET=fixture_not_a_real_credential`. Sigue en 196 tests verdes, `ruff check` limpio.
 Detalle completo en `docs/ARCHITECTURE.md` sección "Estado actual".
 
 ## Decisiones clave
@@ -142,6 +143,49 @@ Dario en sesión de Cowork:
   documentación/arquitectura sobre esto hasta que Fases 0-1 tengan código
   funcional. Evita repetir el mismo patrón de "diseñar antes de implementar"
   que la propia revisión señala como problema del portfolio.
+
+## Revisión externa (2026-08-27)
+
+Tercera consolidación estratégica recibida de otra IA (primera: aigis-detect
+17/8; segunda: esta misma sección más arriba, 23/8) — esta vez sobre el
+`STATUS.md` del proyecto ya con Fase 6 en progreso. Puntos aceptados,
+diferidos y rechazados, discutidos con Dario en sesión de Cowork:
+
+- **Aceptado, aplicado de inmediato (costo cero, no toca el roadmap de
+  fases):** el diagnóstico de que "196 tests verdes" no comunica por sí
+  solo qué tan seguro es el sistema — falta declarar qué prueban realmente
+  los tests, no solo cuántos hay. `.gitattributes` para el ruido CRLF/LF ya
+  se había aplicado en el mismo commit que completó T03-T08 (`ae80477`,
+  27/8). En esta ronda se aplicaron además: `PolicyDecision.policy_version`
+  (trazabilidad por decisión individual a la allowlist que la produjo, no
+  solo vía `environment.json`) y el rename del decoy secret de T05 lejos de
+  un patrón de clave real de Stripe (evita falsos positivos de secret
+  scanning en un repo que ya tuvo dos incidentes de credenciales este mes).
+- **Aceptado, sin ejecutar todavía:** el argumento de que un eval
+  adversarial explícito y reproducible (S03-S05) vale más como evidencia de
+  seguridad que la cobertura indirecta que ya dan los tests de Policy
+  Engine/Sandbox de la Fase 3. La revisión lo propone como prioridad P1;
+  Dario no re-prioriza el roadmap todavía — completar el benchmark de Fase
+  6 (T02-T08 en vivo, métricas agregadas) sigue primero. Queda anotado como
+  candidato fuerte para la próxima decisión de scope, igual que el 23/8 se
+  aceptó el diagnóstico de fondo sin reescribir el plan en el momento.
+- **Rechazado por ahora:** CI/CD, branch protection, PRs obligatorios,
+  CodeQL, Dependabot, y un `PolicyBackend` intercambiable pensado para un
+  futuro backend OPA/Rego. La propia revisión externa ya los ubica en Fase
+  6.5/7 ("Production Hardening"), que el plan original ya definía como
+  fuera del alcance inicial — adelantarlos ahora, en pleno desarrollo en
+  solitario, sería repetir el mismo patrón de "proceso antes que código"
+  que la revisión del 23/8 señaló como riesgo del portfolio.
+- **Sin fricción, ya encuadrado igual en ambas partes:** attestations
+  firmadas del Evidence Bundle (Ed25519/Sigstore) como evolución futura del
+  formato de la sección 13 de `ARCHITECTURE.md` — la revisión lo marca como
+  P4/futuro y el roadmap ya lo tenía ahí; no requiere ninguna decisión
+  nueva.
+- **Nota aparte, no es un tema del código:** la revisión reafirma que el
+  seguimiento del incidente de exposición de la API key de Anthropic (ver
+  `STATUS.md`) sigue siendo la única prioridad P0 real — pero es higiene
+  operativa de Dario, no algo que este repositorio pueda resolver por sí
+  mismo.
 
 ## Próximos pasos
 - [x] Fase 0/1: domain models + tests unitarios en `src/aigis/domain/`
