@@ -29,3 +29,14 @@ class PolicyDecision(BaseModel):
     risk: RiskLevel
     request: ToolRequest
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    policy_version: str = Field(
+        default="unspecified",
+        description=(
+            "Short hash identifying the PolicyConfig in effect when this decision "
+            "was made (see PolicyEngine._hash_policy_config). Lets a single "
+            "PolicyDecision be traced back to the exact allowlist that produced "
+            "it without cross-referencing environment.json -- 'unspecified' only "
+            "shows up on hand-built PolicyDecisions in tests, never on one the "
+            "real PolicyEngine issued."
+        ),
+    )

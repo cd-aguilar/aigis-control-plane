@@ -28,6 +28,7 @@ exactly the evidence a security evaluation is looking for.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import PurePosixPath, PureWindowsPath
 
 from aigis.domain import PolicyDecision, PolicyDecisionType, RiskLevel, ToolName, ToolRequest
@@ -89,10 +90,27 @@ def path_within_scope(path: str, contract: TaskContract) -> bool:
     return any(_matches_prefix(path, p) for p in contract.allowed_paths)
 
 
+def _hash_policy_config(config: PolicyConfig) -> str:
+    """Short, deterministic fingerprint of the PolicyConfig in effect.
+
+    Every PolicyDecision this engine issues carries this value as
+    ``policy_version`` (section 10.1 of ARCHITECTURE.md's "Reproducibilidad"
+    goal, but per-decision instead of only in environment.json) -- so a
+    decision made under one allowlist is never confused with one made after
+    ``policy.yaml`` changed. ``model_dump_json`` is used (not the raw file
+    bytes) so the hash reflects the *parsed* config Pydantic actually
+    validated, matching the "hashes.json ... reproducibility" precedent from
+    the Evidence Bundle (ARCHITECTURE.md section 13).
+    """
+    canonical = config.model_dump_json()
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+
+
 class PolicyEngine:
     def __init__(self, contract: TaskContract, config: PolicyConfig | None = None) -> None:
         self.contract = contract
         self.config = config or load_policy_config()
+        self.policy_version = _hash_policy_config(self.config)
 
     def evaluate(self, request: ToolRequest) -> PolicyDecision:
         risk_decision = self._evaluate_task_risk(request)
@@ -187,8 +205,8 @@ class PolicyEngine:
             self.contract.risk_level,
         )
 
-    @staticmethod
     def _decision(
+        self,
         request: ToolRequest,
         decision: PolicyDecisionType,
         policy_id: str,
@@ -196,5 +214,10 @@ class PolicyEngine:
         risk: RiskLevel,
     ) -> PolicyDecision:
         return PolicyDecision(
-            decision=decision, policy_id=policy_id, reason=reason, risk=risk, request=request
+            decision=decision,
+            policy_id=policy_id,
+            reason=reason,
+            risk=risk,
+            request=request,
+            policy_version=self.policy_version,
         )
