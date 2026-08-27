@@ -421,20 +421,26 @@ Estas características pertenecen al roadmap, no al núcleo inicial.
 
 ## 22. Arquitectura del repositorio
 
+Refleja la estructura real del repo a partir de Fase 6 (confirmada contra `git ls-files` el 2026-08-27) — no el scaffold aspiracional original de Fase 0. `evals/` y un `sandbox/` a nivel raíz existieron como carpetas vacías (`.gitkeep`) desde el scaffold inicial y nunca se usaron: el código real siempre vivió en `src/aigis/evaluation/` y `src/aigis/sandbox/`; se eliminaron para no confundir a otra sesión con dos carpetas de nombre casi igual. `data/{raw,processed}/` queda como placeholder sin uso — este proyecto no tiene pipeline de datos, no hay ítem del roadmap que lo requiera.
+
 ```text
 aigis-control-plane/
 ├── src/aigis/
 │   ├── domain/       (task, state, attempt, evidence, decision)
 │   ├── agent/        (runtime, reducer, tools)
-│   ├── providers/    (base, claude)
-│   ├── policy/       (engine, policy.yaml)
-│   ├── sandbox/      (docker)
-│   ├── evaluation/   (gates, grader, suite/)
-│   ├── evidence/     (trace, bundle)
-│   └── cli.py
-├── tests/  evals/  sandbox/  examples/  docs/
-├── data/{raw,processed}/  scripts/
-└── CLAUDE.md  README.md  .gitignore  .env.example
+│   ├── providers/    (claude)
+│   ├── policy/       (engine, config, policy.yaml, executor)
+│   ├── sandbox/      (base, local_cow, docker_sandbox)
+│   ├── evaluation/   (gates, decision_engine, security_suite, benchmark_tasks)
+│   ├── evidence/     (bundle)
+│   ├── orchestrator.py   (run_task: corre el mecanismo completo de punta a punta)
+│   └── cli.py             (`aigis run <contract.json> <repo>`)
+├── tests/            (misma forma que src/aigis/, uno a uno)
+├── examples/tasks/   (T01/T02/T05 materializadas — ver examples/tasks/README.md)
+├── scripts/          (generate_examples.py)
+├── docs/             (ARCHITECTURE.md, este documento)
+├── data/{raw,processed}/   (placeholder sin uso)
+└── CLAUDE.md  README.md  STATUS.md  .gitignore  .env.example  pyproject.toml
 ```
 
 ---

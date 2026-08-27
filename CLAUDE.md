@@ -43,18 +43,24 @@ RAG/vector DB, Kubernetes, workers distribuidos, UI web compleja, observability
 pesado. Pertenecen al roadmap (fases posteriores), no al núcleo inicial.
 
 ## Estructura del repo
+Estructura real (confirmada contra `git ls-files`, 2026-08-27). Los `evals/`
+y `sandbox/` a nivel raíz del scaffold original de Fase 0 eran carpetas
+vacías nunca usadas -- se eliminaron para no confundir con
+`src/aigis/evaluation/`/`src/aigis/sandbox/`, que sí tienen el código real.
 ```
 aigis-control-plane/
   src/aigis/
-    domain/      (task, state, attempt, evidence, decision)
-    agent/       (runtime, reducer, tools)
-    providers/   (base, claude)
-    policy/      (engine, policy.yaml)
-    sandbox/     (docker)
-    evaluation/  (gates, grader, suite/)
-    evidence/    (trace, bundle)
+    domain/       (task, state, attempt, evidence, decision)
+    agent/        (runtime, reducer, tools)
+    providers/    (claude)
+    policy/       (engine, config, policy.yaml, executor)
+    sandbox/      (base, local_cow, docker_sandbox)
+    evaluation/   (gates, decision_engine, security_suite, benchmark_tasks)
+    evidence/     (bundle)
+    orchestrator.py
     cli.py
-  tests/  evals/  sandbox/  docs/  examples/
+  tests/  examples/tasks/  scripts/  docs/  data/{raw,processed}/ (sin uso)
+  STATUS.md
 ```
 
 ## Estado actual
