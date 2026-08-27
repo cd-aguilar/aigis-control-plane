@@ -1,0 +1,53 @@
+# aigis-control-plane — Estado del proyecto
+
+_Última actualización: 27 ago 2026_
+
+Este documento resume el estado real de arquitectura, código y repo para que cualquier sesión (Cowork, Claude Code, o vos) arranque con contexto completo sin tener que re-derivarlo. Subilo al knowledge del Project "Aigis Control Plane" en claude.ai para que quede disponible automáticamente. Para el detalle técnico completo de cada pieza, `docs/ARCHITECTURE.md`; para el historial fase por fase, `CLAUDE.md`.
+
+## Qué es y qué problema resuelve
+
+Control plane de seguridad/autorización/verificación para agentes de IA. Tesis central: *"El agente puede decir que terminó. El sistema decide si es verdad."* Separa tres preguntas que la mayoría de los harnesses de agentes mezclan en una sola respuesta no confiable (la del propio LLM): qué puede hacer el agente (capability), qué está autorizado a hacer ahora mismo (Policy Engine, determinista, externo al LLM) y si la tarea realmente quedó terminada (Decision Engine, calculado desde evidencia verificable — nunca del mensaje del agente).
+
+Primer caso de uso: un coding agent. La arquitectura no está atada a ese caso — ver sección "Evolución futura" de `ARCHITECTURE.md`. Es el proyecto "atípico a propósito" dentro del portfolio de 5 flagships: los otros cuatro (`aigis-detect`, `agent-orchestrator-soc`, `local-rag-second-brain`, `aigis-cloud`) atacan un dominio de seguridad concreto; este es la infraestructura transversal que en teoría podría sostenerlos a todos.
+
+## Estado por fase (roadmap de 8 fases, sin plazos fijos)
+
+| Fase | Qué es | Estado |
+|---|---|---|
+| 0/1 | Domain layer (Pydantic): TaskContract, ToolRequest, PolicyDecision, Attempt, TaskState, GateResult, Evidence, Decision | ✅ completa |
+| 2 | Agent Runtime (reducer sin I/O) + ClaudeProvider real | ✅ completa |
+| 3 | Policy Engine determinista (ALLOW/DENY/REQUIRE_HUMAN) + Sandbox (LocalCowSandbox + DockerSandbox real, verificado contra un daemon Docker) | ✅ completa |
+| 4 | Quality Gates ejecutables (pytest/ruff, salida estructurada) + Evidence Bundle real (hashes SHA-256) + Decision Engine fail-closed | ✅ completa |
+| 5 | Security Evaluation Suite — S01 Prompt Injection, S02 Unauthorized Secret Access | ✅ completa (S03-S05 quedan como evolución futura) |
+| 6 | Orquestador end-to-end (`run_task`) + CLI real (`aigis run`) + 3/8 tareas de benchmark | 🟡 en progreso |
+| 7 | Production Hardening (human approval, GitHub write access, CI/CD, Credential Broker, RBAC) | fuera del alcance inicial |
+
+**186 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio.**
+
+## Hito reciente: primera corrida real contra Claude
+
+El 27 ago 2026 se corrió `aigis run examples/tasks/T01/contract.json examples/tasks/T01/repo` contra la API real de Claude (no un provider scripteado de test) y dio:
+
+```
+[PASS] T01 -- policy satisfied, all required gates passed, in scope and within limits
+evidence: evidence/run-f9211fe76909/
+```
+
+Primera prueba end-to-end de que el mecanismo completo (Agent Runtime → Policy Engine/Sandbox → Quality Gates → Evidence Bundle → Decision Engine) funciona con un LLM real, no solo con los `ScriptedProvider` deterministas que usan los tests automatizados (Security Suite, orquestador).
+
+## Repo GitHub `cd-aguilar/aigis-control-plane`
+
+- Rama activa: `main`, pública, historial de commits real (no solo un snapshot).
+- Sin PRs abiertos, sin ramas obsoletas — todo el trabajo se commitea directo a `main` fase por fase.
+- Documentación al día: `README.md` (explica el problema + dónde encaja en el portfolio), `docs/ARCHITECTURE.md` (spec completa, 27 secciones), `CLAUDE.md` (historial fase por fase).
+- `examples/tasks/` — 3 tareas de benchmark materializadas y listas para correr con una API key real (`examples/tasks/README.md` tiene las instrucciones).
+
+## Pendiente
+
+- Fase 6: 5 tareas de benchmark restantes (T03/T04/T06/T07/T08), agregación de métricas (sección 19 de `ARCHITECTURE.md` — success rate, cost-to-pass, etc.; requiere primero correr varias tareas reales para tener datos que agregar).
+- Fase 5: S03 (path traversal), S04 (command injection), S05 (resource exhaustion) — evolución futura, ya cubiertos indirectamente por los tests de Policy Engine/Sandbox de la Fase 3.
+- Fase 7 (Production Hardening): explícitamente fuera del alcance inicial.
+
+### Incidente de seguridad (27 ago 2026)
+
+Una API key de Anthropic quedó expuesta en texto plano dos veces en una sesión de Claude Code: primero pegada directo en el chat, después visible en una captura de pantalla de PowerShell. Se le indicó a Dario revocarla en `console.anthropic.com` y generar una nueva; quedó un recordatorio programado para el 28 ago a las 9am (hora Argentina) para confirmar que se hizo. Es el segundo incidente de exposición de credenciales del mes — el primero fue un `infisical secrets --env=dev` sin filtrar el 1 ago (documentado en `STATUS.md` de `aigis-cloud`) que volcó 10 secrets en texto plano, incluyendo varias API keys de proveedores LLM. Sin resolver a la fecha de este documento: confirmar que ambas rotaciones se completaron.
