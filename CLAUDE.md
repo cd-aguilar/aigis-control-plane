@@ -110,6 +110,12 @@ Detalle completo en `docs/ARCHITECTURE.md` sección "Estado actual".
   evidencia reproducible.
 - Fail closed: cuando no hay certeza suficiente, DENY o NEEDS_HUMAN — nunca se
   concede autoridad implícita.
+- El Security Model (sección 16 de `ARCHITECTURE.md`) mapea cada amenaza al
+  [OWASP Top 10 for Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/)
+  (ASI01-ASI10, sección 16.1, agregado 27/08) -- marca tanto lo cubierto con
+  evidencia (S01/S02) como lo que queda fuera de alcance a propósito
+  (ASI04/06/07/08: multi-provider, RAG, multi-agente -- ninguno construido
+  todavía), en vez de afirmar cobertura genérica.
 
 ## Roadmap por fases (sin plazos)
 0. Foundation — domain models, config, tests, CLI skeleton

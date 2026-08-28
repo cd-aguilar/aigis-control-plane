@@ -343,6 +343,48 @@ Esto permite distinguir correctamente: agente intenta acción prohibida → Poli
 
 La afirmación de seguridad debe ser: **"AIGIS reduces and contains agent risk through layered controls."** Nunca: "AIGIS makes agents secure."
 
+### 16.1 Mapeo a OWASP Top 10 for Agentic Applications (2026)
+
+Correspondencia entre las amenazas de la tabla anterior y el [OWASP Top 10 for
+Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/)
+(`ASI01`-`ASI10`, OWASP GenAI Security Project / Agentic Security Initiative).
+No es una checklist en verde: el valor de esta tabla está en marcar también lo
+que queda **fuera de alcance por diseño** (sección 21), no solo lo cubierto.
+
+| ASI | Nombre | Cobertura en AIGIS | Control(es) relevante(s) | Nota |
+|---|---|---|---|---|
+| ASI01 | Agent Goal Hijack | ✅ Cubierto | Policy Engine deny-by-default + sandbox (fila "Prompt injection") | Demostrado con evidencia reproducible por S01 (sección 17), no solo documentado. |
+| ASI02 | Tool Misuse and Exploitation | ✅ Cubierto | Allowlist de paths (`read_file`/`patch_file`) + allowlist de comandos (`run_command`) — filas "Secret access" y "Unauthorized file modification" | Demostrado end-to-end por S02 (sección 17). |
+| ASI03 | Identity and Privilege Abuse | 🟡 Parcial | Least privilege por tool scoping (sección 3.4) | Sin identidad/credencial distinta por agente — el Credential Broker que cerraría esto es Fase 7, explícitamente fuera del alcance inicial (sección 21). |
+| ASI04 | Agentic Supply Chain Vulnerabilities | ⬜ Fuera de alcance | — | AIGIS no carga tools ni providers de terceros en runtime: un solo LLM, un solo rol de agente, sin multi-provider (sección 21). Vuelve a ser relevante si el roadmap de la sección 26 avanza. |
+| ASI05 | Unexpected Code Execution (RCE) | ✅ Cubierto | Sandbox aislado (`LocalCowSandbox`/`DockerSandbox`) + comandos como argv, nunca shell string — filas "Repo malicioso" y "Command injection" | El diseño de `ToolRequest` (sección 9) rechaza esta clase de ataque por construcción, no la filtra después. |
+| ASI06 | Memory and Context Poisoning | ⬜ Fuera de alcance | — | `TaskState` es stateless entre corridas; sin RAG ni memoria persistente (excluido explícitamente, sección 21). |
+| ASI07 | Insecure Inter-Agent Communication | ⬜ No aplica | — | Sistema de un solo agente; no hay comunicación inter-agente que asegurar (excluido explícitamente, sección 21). |
+| ASI08 | Cascading Failures | ⬜ No aplica todavía | — | Un agente, una tarea por corrida — no hay red de agentes donde una falla se propague. Vuelve a ser relevante si AIGIS pasa a ser infraestructura compartida entre varios tipos de agente (sección 26). |
+| ASI09 | Human-Agent Trust Exploitation | 🟡 Parcial | `AgentClaim` nunca lo lee el Decision Engine (sección 8) | Mitiga la sobre-confianza en lo que el agente *dice* que hizo; falta el flujo de aprobación humana en sí — `REQUIRE_HUMAN` decide, pero no hay UI de aprobación todavía (Fase 7). |
+| ASI10 | Rogue Agents | 🟡 Parcial | Circuit breaker (`max_iterations`/`max_runtime_seconds`/`max_tool_calls`) + Decision Engine fail-closed — fila "Infinite agent loop" | Contiene un agente que no converge o se desvía dentro de una corrida; no hay monitoreo de comportamiento entre corridas o sesiones. |
+
+Tres filas de la tabla de la sección 16 no tienen un ítem ASI dedicado y
+quedan fuera de esta correspondencia 1:1 a propósito: "Network exfiltration"
+y "Resource exhaustion" son controles de contención transversales que
+sostienen varios ítems ASI a la vez (ASI01, ASI02, ASI05) más que responder a
+uno solo; "Evidence tampering" no es una amenaza de comportamiento del
+agente sino de integridad del propio control plane — el Top 10 de OWASP
+enumera riesgos del agente, no del sistema de auditoría que lo vigila. Es
+exactamente lo que motiva evolucionar el Evidence Bundle hacia attestations
+firmadas (sección 13).
+
+**Resumen honesto:** de los 10 ítems, 3 están cubiertos con evidencia
+reproducible (ASI01, ASI02, ASI05), 3 están parcialmente cubiertos porque el
+mecanismo existe pero le falta una pieza ya presente en el roadmap (ASI03,
+ASI09, ASI10 — las tres resuelven en Fase 7), y 4 quedan fuera del alcance
+actual por diseño, no por descuido (ASI04, ASI06, ASI07, ASI08 — todos
+dependen de capacidades que el alcance inicial excluye explícitamente:
+multi-provider, RAG/memoria, multi-agente). Esta correspondencia es, en sí
+misma, evidencia de que "minimize the blast radius by design" (sección 3.7)
+no es una frase vacía: se puede señalar con precisión qué minimiza hoy y qué
+todavía no.
+
 ---
 
 ## 17. Security Evaluation Suite
