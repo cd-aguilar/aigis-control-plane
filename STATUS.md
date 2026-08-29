@@ -1,6 +1,6 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 29 ago 2026_
+_Última actualización: 29 ago 2026 (Security Evaluation Suite completa, 5/5)_
 
 Este documento resume el estado real de arquitectura, código y repo para que cualquier sesión o IA (Cowork, Claude Code, ChatGPT, Gemini, o vos) arranque con contexto completo sin tener que re-derivarlo. Subilo al knowledge del Project "Aigis Control Plane" en claude.ai o pegalo directo en el chat de otra IA para consulta cruzada. Para el detalle técnico completo de cada pieza, `docs/ARCHITECTURE.md`; para el historial fase por fase, `CLAUDE.md`.
 
@@ -18,11 +18,15 @@ Primer caso de uso: un coding agent. La arquitectura no está atada a ese caso �
 | 2 | Agent Runtime (reducer sin I/O) + ClaudeProvider real | ✅ completa |
 | 3 | Policy Engine determinista (ALLOW/DENY/REQUIRE_HUMAN) + Sandbox (LocalCowSandbox + DockerSandbox real, verificado contra un daemon Docker) | ✅ completa |
 | 4 | Quality Gates ejecutables (pytest/ruff, salida estructurada) + Evidence Bundle real (hashes SHA-256) + Decision Engine fail-closed | ✅ completa |
-| 5 | Security Evaluation Suite — S01 Prompt Injection, S02 Unauthorized Secret Access | ✅ completa (S03-S05 quedan diferidas, no rechazadas — ver Pendiente) |
+| 5 | Security Evaluation Suite — **5/5 evals**: S01 Prompt Injection, S02 Unauthorized Secret Access, S03 Path Traversal, S04 Command Injection, S05 Resource Exhaustion | ✅ completa |
 | 6 | Orquestador end-to-end (`run_task`) + CLI real (`aigis run`) + las 8 tareas de benchmark (T01-T08) **corridas en vivo contra `claude-sonnet-5` real: 8/8 PASS** + métricas de la sección 19 agregadas desde datos reales | ✅ completa |
 | 7 | Production Hardening (human approval, GitHub write access, CI/CD, Credential Broker, RBAC) | fuera del alcance inicial |
 
-**214 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio.**
+**Alcance inicial del MVP (sección 21 de `ARCHITECTURE.md`) completo — Fases 0-6.** 221 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio.
+
+## Hito: Security Evaluation Suite completa (29 ago 2026)
+
+S03 (Path Traversal), S04 (Command Injection) y S05 (Resource Exhaustion) — las 3 que habían quedado como "evolución futura" — ya están en `security_suite.py`, mismo patrón que S01/S02: `AgentRuntime` real contra `PolicyEngine`/`LocalCowSandbox` reales, con controles negativos que prueban que el arnés puede fallar. S05 no encajaba en el molde "una request debe ser DENY" — se agregó `ResourceExhaustionScenario` + un `InfiniteProvider` que nunca llama `ClaimDone`, y lo que se verifica ahí es que el circuit breaker del contrato (no el safety cap absoluto de `AgentRuntime`) es lo que termina un loop sin fin. Con esto, las 5 evals de seguridad originalmente planeadas en la sección 17 quedan completas — 7 tests nuevos, 221 verdes en total.
 
 ## Hito: las 8 tareas de benchmark, en vivo, con métricas reales (29 ago 2026)
 
@@ -81,10 +85,12 @@ Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada captu
 
 ## Pendiente
 
-1. Fase 5: decidir timing de S03 (path traversal), S04 (command injection), S05 (resource exhaustion) — diferidas, no rechazadas; ya cubiertas indirectamente por los tests de Policy Engine/Sandbox de la Fase 3.
-2. Fase 7 (Production Hardening): explícitamente fuera del alcance inicial — no adelantar (rechazado en la revisión externa del 27/8, ver arriba).
-3. Documentación técnica separada (`SECURITY.md`, `EVALUATION.md`, `THREAT-MODEL.md`) si se decide desglosarla de `ARCHITECTURE.md` — la sección 16.1 nueva es candidata natural para sembrar `THREAT-MODEL.md`. Parte del Día 7 del plan original, todavía no decidido.
-4. Opcional: correr T01-T08 una segunda vez para tener más de un dato por tarea — con N=1 por tarea no se puede distinguir varianza normal de algo estructural (ver T06 en la tabla de arriba).
+El alcance inicial del MVP está completo. Lo que queda es explícitamente fuera de ese alcance o discrecional, no bloqueante:
+
+1. Fase 7 (Production Hardening): explícitamente fuera del alcance inicial — no adelantar (rechazado en la revisión externa del 27/8, ver arriba).
+2. Documentación técnica separada (`SECURITY.md`, `EVALUATION.md`, `THREAT-MODEL.md`) si se decide desglosarla de `ARCHITECTURE.md` — la sección 16.1 nueva es candidata natural para sembrar `THREAT-MODEL.md`. Parte del Día 7 del plan original, todavía no decidido.
+3. Opcional: correr T01-T08 una segunda vez para tener más de un dato por tarea — con N=1 por tarea no se puede distinguir varianza normal de algo estructural (ver T06 en la tabla de arriba).
+4. Decidir hacia dónde sigue el proyecto ahora que el MVP está cerrado: pulir el portfolio (demo real, mostrar resultados en `aigis-cloud`), o mover el foco a otro de los 5 flagships.
 
 ### Incidente de seguridad (27 ago 2026)
 

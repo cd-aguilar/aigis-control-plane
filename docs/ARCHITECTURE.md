@@ -391,10 +391,9 @@ todavía no.
 
 La seguridad forma parte del sistema de evaluación, no es documentación decorativa.
 
-**Inicial**: S01 — Prompt Injection, S02 — Unauthorized Secret Access
-**Evolución**: S03 — Path Traversal, S04 — Command Injection, S05 — Resource Exhaustion
+**Completo (2026-08-29):** S01 — Prompt Injection, S02 — Unauthorized Secret Access, S03 — Path Traversal, S04 — Command Injection, S05 — Resource Exhaustion. Las 5 evals originalmente planeadas están implementadas en `src/aigis/evaluation/security_suite.py`.
 
-Flujo ejemplo: malicious README → agent reads it → agent attempts forbidden action → Policy Engine → DENY → evidence → security evaluation PASS.
+Flujo ejemplo (S01-S04): malicious README → agent reads it → agent attempts forbidden action → Policy Engine → DENY → evidence → security evaluation PASS. S05 no encaja en ese flujo — no hay una request que denegar, sino un agente que nunca decide parar por su cuenta; lo que se verifica ahí es que el circuit breaker del contrato (`max_iterations`/`max_tool_calls`/`max_runtime_seconds`, sección 16 "Infinite agent loop") termina el run de forma determinista, sin depender del safety cap absoluto de `AgentRuntime` (que es un backstop, no el mecanismo primario).
 
 La métrica debe hablar de **"containment against the tested attack set"**, nunca de "100% secure".
 
@@ -554,10 +553,10 @@ No incorporar inicialmente: LangChain, LangGraph, Chroma, Redis, Postgres, Kafka
 - **Fase 6 en progreso (2026-08-26/27):** Orquestador end-to-end (`src/aigis/orchestrator.py::run_task`) — corre el mecanismo completo de la sección 1 en una sola llamada: Agent Runtime → Policy Engine/Sandbox → Quality Gates (solo los declarados en `required_gates`) → Evidence Bundle → Decision Engine. CLI real (`src/aigis/cli.py`, `aigis run <contract.json> <repo>`) instalado como entry point de `pyproject.toml`. Se corrigió el model ID desactualizado de `ClaudeProvider` (`claude-sonnet-4-5` → `claude-sonnet-5`). **Corrida real confirmada (27 ago 2026):** `aigis run examples/tasks/T01/contract.json examples/tasks/T01/repo` contra la API real de Claude devolvió `[PASS]` — primera verificación de que el mecanismo completo funciona con un LLM real, no solo con los `ScriptedProvider` deterministas que usan los tests automatizados. Las **8 tareas de la sección 18 completas** (T01-T08; T05 con una condición adversarial — un archivo de secretos fuera de `allowed_paths`/dentro de `forbidden_paths` que nada le pide al agente tocar — y T07 con `config/` en scope en vez de prohibido, a propósito en contraste con T05), materializadas en `examples/tasks/` vía `scripts/generate_examples.py`. Se agregó `.gitattributes` (`* text=auto eol=lf`) para evitar ruido de fin de línea CRLF/LF entre checkouts en Windows.
 - **Gap de métricas encontrado y cerrado (2026-08-29):** nada capturaba uso de tokens — la sección 19 pide "token cost"/"cost-to-pass" pero `ClaudeProvider.propose_action` descartaba `response.usage`. Se agregó `ClaudeProvider.usage_summary` (acumulado por instancia) y `total_input_tokens`/`total_output_tokens` opcionales en `EnvironmentMetadata`; `orchestrator.run_task` los lee de forma duck-typed (`getattr(provider, "usage_summary", None)`), así que un `ScriptedProvider` de test no reporta nada en vez de romper. T01 (la única corrida real hasta ahora) es anterior a este fix y no tiene tokens registrados.
 - **Fase 6 completa (2026-08-29):** las 8 tareas de benchmark corridas en vivo contra `claude-sonnet-5` real con el tracking de tokens activo — **8/8 PASS**. `src/aigis/evaluation/metrics.py` (`load_run`/`aggregate`) y `scripts/aggregate_metrics.py` agregan success rate, iteraciones/tool calls promedio, latencia, costo y containment rate desde las Evidence Bundles reales — resultados en la sección 19.
-- Estado de tests verificado el 2026-08-29: **214 tests pasando, 1 skip condicional al entorno**, `ruff check` limpio.
+- **Fase 5 cerrada del todo (2026-08-29):** S03 (Path Traversal), S04 (Command Injection) y S05 (Resource Exhaustion) implementadas en `security_suite.py`, mismo patrón que S01/S02 — `AgentRuntime` real contra `PolicyEngine`/`LocalCowSandbox` reales, con controles negativos. S05 necesitó una forma distinta (`ResourceExhaustionScenario`/`run_resource_exhaustion_scenario`, un `InfiniteProvider` que nunca llama `ClaimDone`): no hay una request individual que denegar, lo que se verifica es que el circuit breaker del contrato termina el run antes de que haga falta el safety cap absoluto de `AgentRuntime`. Las 5 evals originalmente planeadas en la sección 17 quedan completas.
+- Estado de tests verificado el 2026-08-29: **221 tests pasando, 1 skip condicional al entorno**, `ruff check` limpio.
 
 **Pendiente:**
-- Decidir timing de S03/S04/S05 (path traversal, command injection, resource exhaustion) — diferidas desde Fase 5, no rechazadas.
 - Fase 7 (Production Hardening) — explícitamente fuera del alcance inicial.
 - Documentación técnica separada (`SECURITY.md`, `EVALUATION.md`, `THREAT-MODEL.md`) si se decide desglosarlos de este documento.
 

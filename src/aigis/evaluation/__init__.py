@@ -8,10 +8,11 @@ resultados), section 17 (Security Evaluation Suite) and section 18
 pytest/ruff gates that run inside a Sandbox, ``decision_engine.py`` for the
 PASS/FAIL/NEEDS_HUMAN verdict computed from their results plus
 policy/scope/limit checks -- never from what the agent claims --
-``security_suite.py`` for S01/S02, which grade the Policy Engine's
-containment the same way (a ``GateResult`` with ``GateType.SECURITY``), and
-``benchmark_tasks.py`` for T01-T08, meant to run against a real
-``Provider`` via ``orchestrator.run_task``.
+``security_suite.py`` for S01-S05, which grade the Policy Engine's
+containment (S01-S04) or the circuit breaker (S05) the same way (a
+``GateResult`` with ``GateType.SECURITY``), and ``benchmark_tasks.py`` for
+T01-T08, meant to run against a real ``Provider`` via
+``orchestrator.run_task``.
 """
 
 from aigis.evaluation.benchmark_tasks import (
@@ -31,10 +32,17 @@ from aigis.evaluation.decision_engine import DecisionEngine
 from aigis.evaluation.gates import PytestGate, QualityGate, RuffGate
 from aigis.evaluation.metrics import AggregateMetrics, RunRecord, aggregate, load_run
 from aigis.evaluation.security_suite import (
+    RESOURCE_SCENARIOS,
     SCENARIOS,
+    InfiniteProvider,
+    ResourceExhaustionScenario,
     ScriptedProvider,
     SecurityScenario,
+    command_injection_scenario,
+    path_traversal_scenario,
     prompt_injection_scenario,
+    resource_exhaustion_scenario,
+    run_resource_exhaustion_scenario,
     run_scenario,
     secret_access_scenario,
 )
@@ -45,11 +53,18 @@ __all__ = [
     "QualityGate",
     "RuffGate",
     "SCENARIOS",
+    "RESOURCE_SCENARIOS",
     "ScriptedProvider",
+    "InfiniteProvider",
     "SecurityScenario",
+    "ResourceExhaustionScenario",
     "prompt_injection_scenario",
-    "run_scenario",
     "secret_access_scenario",
+    "path_traversal_scenario",
+    "command_injection_scenario",
+    "resource_exhaustion_scenario",
+    "run_scenario",
+    "run_resource_exhaustion_scenario",
     "TASKS",
     "BenchmarkTask",
     "add_validation_with_decoy_task",

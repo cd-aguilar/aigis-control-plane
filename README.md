@@ -73,7 +73,7 @@ Full spec, threat model, and section-by-section detail:
 
 ## Status
 
-> Phases 0–6 (in progress). Domain layer (`TaskContract`, `ToolRequest`,
+> Phases 0–6 done (initial MVP scope complete). Domain layer (`TaskContract`, `ToolRequest`,
 > `PolicyDecision`, `Attempt`, `TaskState`, `GateResult`, `Evidence`,
 > `Decision`, `AgentClaim`) as Pydantic models with the Decision formula
 > enforced structurally, not just documented. Agent Runtime (reducer +
@@ -83,10 +83,13 @@ Full spec, threat model, and section-by-section detail:
 > actual Docker daemon: no network, non-root, read-only + tmpfs, resource
 > caps). Executable Quality Gates (`pytest`/`ruff` inside the sandbox, graded
 > from structured JSON), a real Evidence Bundle writer, and a fail-closed
-> Decision Engine. A Security Evaluation Suite (S01 Prompt Injection, S02
-> Unauthorized Secret Access) drives the real Policy Engine + Sandbox end to
-> end and grades containment as an ordinary `GateResult` — no separate
-> code path for "security" in the Evidence Bundle or Decision Engine.
+> Decision Engine. A Security Evaluation Suite — all 5 originally-planned
+> evals (S01 Prompt Injection, S02 Unauthorized Secret Access, S03 Path
+> Traversal, S04 Command Injection, S05 Resource Exhaustion) — drives the
+> real Policy Engine + Sandbox (or, for S05, the contract's circuit
+> breaker) end to end and grades containment as an ordinary `GateResult` —
+> no separate code path for "security" in the Evidence Bundle or Decision
+> Engine.
 > An orchestrator (`run_task`) wires the whole mechanism into one call, and
 > a real CLI (`aigis run <contract.json> <repo>`) is installed and wired to
 > it. **All 8 functional benchmark tasks from section 18 (T01-T08) have run
@@ -98,12 +101,14 @@ Full spec, threat model, and section-by-section detail:
 > rate, 4.9 average iterations/tool calls, 10.6s average latency, $0.30
 > total cost, $0.038 cost-to-pass — reported honestly as N=8 (one run each),
 > not a statistically significant benchmark.
-> **214 unit tests green, `ruff check` clean.**
+> **221 unit tests green, `ruff check` clean.**
 >
-> Not implemented yet: S03-S05 (path traversal, command injection, resource
-> exhaustion — deferred, not rejected). See `examples/tasks/README.md` to
-> run a task yourself, or `docs/ARCHITECTURE.md` section 19 for the full
-> results table.
+> Everything from the initial MVP scope (ARCHITECTURE.md section 21) is
+> done. What's left is explicitly out of scope for now: Phase 7 (Production
+> Hardening — human approval, GitHub write access, CI/CD, a real Credential
+> Broker, RBAC). See `examples/tasks/README.md` to run a benchmark task
+> yourself, or `docs/ARCHITECTURE.md` section 19 for the full results
+> table.
 
 ## Repo layout
 
