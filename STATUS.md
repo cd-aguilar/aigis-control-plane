@@ -1,6 +1,6 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 27 ago 2026 (8/8 tareas de benchmark completas)_
+_Última actualización: 27 ago 2026 (noche)_
 
 Este documento resume el estado real de arquitectura, código y repo para que cualquier sesión o IA (Cowork, Claude Code, ChatGPT, Gemini, o vos) arranque con contexto completo sin tener que re-derivarlo. Subilo al knowledge del Project "Aigis Control Plane" en claude.ai o pegalo directo en el chat de otra IA para consulta cruzada. Para el detalle técnico completo de cada pieza, `docs/ARCHITECTURE.md`; para el historial fase por fase, `CLAUDE.md`.
 
@@ -14,12 +14,12 @@ Primer caso de uso: un coding agent. La arquitectura no está atada a ese caso �
 
 | Fase | Qué es | Estado |
 |---|---|---|
-| 0/1 | Domain layer (Pydantic): TaskContract, ToolRequest, PolicyDecision, Attempt, TaskState, GateResult, Evidence, Decision | ✅ completa |
+| 0/1 | Domain layer (Pydantic): TaskContract, ToolRequest, PolicyDecision (ahora con `policy_version` trazable), Attempt, TaskState, GateResult, Evidence, Decision | ✅ completa |
 | 2 | Agent Runtime (reducer sin I/O) + ClaudeProvider real | ✅ completa |
 | 3 | Policy Engine determinista (ALLOW/DENY/REQUIRE_HUMAN) + Sandbox (LocalCowSandbox + DockerSandbox real, verificado contra un daemon Docker) | ✅ completa |
 | 4 | Quality Gates ejecutables (pytest/ruff, salida estructurada) + Evidence Bundle real (hashes SHA-256) + Decision Engine fail-closed | ✅ completa |
-| 5 | Security Evaluation Suite — S01 Prompt Injection, S02 Unauthorized Secret Access | ✅ completa (S03-S05 quedan como evolución futura) |
-| 6 | Orquestador end-to-end (`run_task`) + CLI real (`aigis run`) + 8/8 tareas de benchmark; falta correr T02-T08 en vivo y agregar métricas | 🟡 en progreso |
+| 5 | Security Evaluation Suite — S01 Prompt Injection, S02 Unauthorized Secret Access | ✅ completa (S03-S05 quedan diferidas, no rechazadas — ver Pendiente) |
+| 6 | Orquestador end-to-end (`run_task`) + CLI real (`aigis run`) + 8/8 tareas de benchmark materializadas (T01-T08), 1/8 corrida en vivo (T01, PASS) | 🟡 en progreso |
 | 7 | Production Hardening (human approval, GitHub write access, CI/CD, Credential Broker, RBAC) | fuera del alcance inicial |
 
 **196 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio.**
@@ -33,30 +33,46 @@ El 27 ago 2026 se corrió `aigis run examples/tasks/T01/contract.json examples/t
 evidence: evidence/run-f9211fe76909/
 ```
 
-Primera prueba end-to-end de que el mecanismo completo (Agent Runtime → Policy Engine/Sandbox → Quality Gates → Evidence Bundle → Decision Engine) funciona con un LLM real, no solo con los `ScriptedProvider` deterministas que usan los tests automatizados (Security Suite, orquestador). Después de esto se completaron las 8/8 tareas de benchmark de la sección 18 (T02-T08 agregadas el mismo día); ninguna de ellas se corrió todavía en vivo, solo T01.
+Primera prueba end-to-end de que el mecanismo completo (Agent Runtime → Policy Engine/Sandbox → Quality Gates → Evidence Bundle → Decision Engine) funciona con un LLM real, no solo con los `ScriptedProvider` deterministas que usan los tests automatizados (Security Suite, orquestador). Las 8 tareas de benchmark (T01-T08) ya están materializadas en `examples/tasks/` (generadas con `scripts/generate_examples.py` desde `src/aigis/evaluation/benchmark_tasks.py`), pero solo T01 se corrió en vivo hasta ahora.
 
-## Limpieza de estructura (27 ago 2026, commit `fe75c05`)
+## Revisión externa cruzada (27 ago 2026) — tercera ronda
 
-`git ls-files` mostró dos carpetas fantasma del scaffold original de Fase 0: `evals/` y `sandbox/` a nivel raíz, ambas vacías (solo `.gitkeep`) desde el 17 ago, nunca usadas — el código real siempre vivió en `src/aigis/evaluation/` y `src/aigis/sandbox/`. Se eliminaron por ser confusas (nombres casi idénticos a nivel raíz y dentro de `src/`). De paso se corrigió `.env.example`, que seguía con `AIGIS_CLAUDE_MODEL=claude-sonnet-4-5` (el mismo model ID desactualizado que ya se había corregido en `providers/claude.py` en Fase 6, pero no se había propagado a este archivo). `CLAUDE.md` y `ARCHITECTURE.md` sección 22 actualizados para reflejar la estructura real. Sigue en 186 tests verdes, `ruff check` limpio.
+Se recibió una revisión estratégica extensa de otra IA ("Contexto consolidado para evaluación y continuidad"). Evaluación crítica propia + decisión del dueño del proyecto (no aplicado a ciegas):
+
+- **Aceptado y aplicado ya** (costo cero, sin tocar el roadmap de fases):
+  - `PolicyDecision.policy_version` — hash SHA-256 (12 hex) de la `PolicyConfig` vigente en el momento de cada decisión, para trazabilidad por-decisión sin tener que cruzar contra `environment.json`. Implementado en `PolicyEngine._hash_policy_config` / `PolicyEngine.__init__` / `PolicyEngine._decision`.
+  - Renombrado el fixture señuelo de T05: `STRIPE_SECRET_KEY=sk_live_fake_...` → `AIGIS_TEST_SECRET=fixture_not_a_real_credential` — el valor anterior calzaba con el patrón regex de escáneres de secretos reales (GitHub secret scanning, etc.), lo cual generaba falsos positivos de seguridad sobre un fixture intencional.
+  - `.gitattributes` (`* text=auto eol=lf`) — resultó que ya lo había agregado una sesión concurrente (commit `ae80477`) antes de que esta sesión llegara a aplicarlo.
+- **Aceptado, no ejecutado todavía** (correcto pero requiere tiempo/decisión propia, no de otra IA): re-priorizar S03-S05 (path traversal, command injection, resource exhaustion) queda a criterio del dueño del proyecto, no una fecha fija.
+- **Rechazado por ahora**: adelantar CI/CD, branch protection, CodeQL, Dependabot a esta semana — es scope creep de Fase 7, ya deliberadamente fuera del alcance inicial del MVP.
+- **Nota aparte**: la sugerencia de usar este Control Plane como capa compartida para más de un tipo de agente (pentest agent, SOC agent sobre alertas SIEM) es una idea de las IAs consultadas, no un compromiso del dueño del proyecto — se guarda como dirección posible post-MVP, no como tarea.
+- Documentado íntegro en `CLAUDE.md` sección "Revisión externa (2026-08-27)" y mirror en el Project doc de claude.ai.
+
+## Mejora de mayor ROI aplicada (27 ago 2026, commit `0457894`)
+
+Se agregó la sección **16.1 "Mapeo a OWASP Top 10 for Agentic Applications (2026)"** en `docs/ARCHITECTURE.md`, a pedido directo del dueño del proyecto (no parte de la revisión externa anterior). Contenido:
+
+- Tabla ASI01-ASI10 completa, verificada contra 4 fuentes independientes convergentes (se descartó 1 fuente en conflicto), con estado de cobertura (✅ cubierto / 🟡 parcial / ⬜ fuera de alcance) y el control concreto de AIGIS que corresponde a cada ítem.
+- Resumen honesto: 3 cubiertos, 3 parciales, 4 fuera de alcance — explícitamente no se vende como checklist en verde.
+- Nota de verificación de fuente (metodología de cross-check).
+- Mirrorado en el Project doc de claude.ai (`claude/aigis-control-plane-architecture.md`).
 
 ## Repo GitHub `cd-aguilar/aigis-control-plane`
 
-- **Verificado dos veces directamente contra la API de GitHub el 27 ago 2026** (no solo con `git log` local): repo **público**, rama por defecto `main`, `HEAD` remoto idéntico al local ambas veces (0 commits de diferencia en cualquier dirección — último SHA verificado: `fe75c05`).
-- Se revisó el historial completo de commits buscando claves reales expuestas (`sk-ant-...`, valores de `ANTHROPIC_API_KEY`) — no aparece ninguna. El único "secreto" en el repo es un fixture falso de la Fase 5 (`STRIPE_SECRET_KEY=sk_live_fake_...` en `examples/tasks/T05`, señuelo intencional para el eval de secret access). `.env` está correctamente ignorado por `.gitignore`.
+- **Verificado directamente contra la API de GitHub el 27 ago 2026** (no solo con `git log` local, y descartando un falso "repo vacío" que dio un fetch no autenticado de la página HTML): repo **público**, rama por defecto `main`.
+- **⚠️ 3 commits locales sin pushear a `origin/main` al cierre de esta sesión**: `6dfdc0f`, `db8eaff`, `0457894` (ver detalle en cada uno más arriba). El bridge de esta sesión de Cowork (`device_bash`, VM Linux montada sobre la carpeta de Windows) **no tiene credenciales de git para GitHub** — `git push` falla con `fatal: could not read Username for 'https://github.com': No such device or address`. **Este push tiene que hacerse desde un entorno con credenciales reales: Claude Code corriendo nativo en la máquina de Dario, o `git push origin main` manual.**
+- Se revisó el historial completo de commits buscando claves reales expuestas (`sk-ant-...`, valores de `ANTHROPIC_API_KEY`) — no aparece ninguna. El fixture señuelo de la Fase 5 ya no tiene forma de clave real (ver arriba).
 - Sin PRs abiertos, sin ramas obsoletas — todo el trabajo se commitea directo a `main` fase por fase.
-- Documentación al día: `README.md` (explica el problema + dónde encaja en el portfolio), `docs/ARCHITECTURE.md` (spec completa, 27 secciones), `CLAUDE.md` (historial fase por fase), `STATUS.md` (este documento).
-- `examples/tasks/` — las 8 tareas de benchmark de la sección 18 materializadas y listas para correr con una API key real (`examples/tasks/README.md` tiene las instrucciones y la tabla completa).
-
-### Higiene local (resuelta 27 ago 2026)
-
-Una sesión anterior había detectado 17 archivos marcados como "modified" por ruido de fin de línea CRLF/LF, sin `.gitattributes` que lo normalizara. Se agregó `.gitattributes` (`* text=auto eol=lf`) al repo; el working tree ya no muestra ese ruido.
+- Documentación al día localmente (pendiente de push): `README.md`, `docs/ARCHITECTURE.md` (spec completa + nueva sección 16.1), `CLAUDE.md` (historial fase por fase + revisión externa), `STATUS.md` (este documento).
+- `examples/tasks/` — 8/8 tareas de benchmark materializadas y listas para correr con una API key real (`examples/tasks/README.md` tiene las instrucciones). Solo T01 corrida en vivo.
 
 ## Pendiente
 
-- Fase 6: correr T02-T08 en vivo contra la API real (T01 ya confirmado con PASS), agregación de métricas (sección 19 de `ARCHITECTURE.md` — success rate, cost-to-pass, etc.; requiere varias corridas reales para tener datos que agregar).
-- Fase 5: S03 (path traversal), S04 (command injection), S05 (resource exhaustion) — evolución futura, ya cubiertos indirectamente por los tests de Policy Engine/Sandbox de la Fase 3.
-- Fase 7 (Production Hardening): explícitamente fuera del alcance inicial.
-- Documentación técnica separada (`SECURITY.md`, `EVALUATION.md`, `THREAT-MODEL.md`) si se decide desglosarla de `ARCHITECTURE.md` — parte del Día 7 del plan original.
+1. **Pushear los 3 commits locales** (`6dfdc0f`, `db8eaff`, `0457894`) a `origin/main` — bloqueado desde Cowork, requiere Claude Code nativo o push manual. **Primer paso obligatorio antes de seguir trabajando desde cualquier sesión, para no divergir del remoto.**
+2. Fase 6: correr T02-T08 en vivo contra la API real (T01 ya confirmado con PASS), agregación de métricas (sección 19 de `ARCHITECTURE.md` — success rate, iteraciones promedio, tool calls promedio, latencia, costo, cost-to-pass, violaciones de policy; requiere varias corridas reales para tener datos que agregar).
+3. Fase 5: decidir timing de S03 (path traversal), S04 (command injection), S05 (resource exhaustion) — diferidas, no rechazadas; ya cubiertas indirectamente por los tests de Policy Engine/Sandbox de la Fase 3.
+4. Fase 7 (Production Hardening): explícitamente fuera del alcance inicial — no adelantar (rechazado en la revisión externa del 27/8, ver arriba).
+5. Documentación técnica separada (`SECURITY.md`, `EVALUATION.md`, `THREAT-MODEL.md`) si se decide desglosarla de `ARCHITECTURE.md` — la sección 16.1 nueva es candidata natural para sembrar `THREAT-MODEL.md`. Parte del Día 7 del plan original, todavía no decidido.
 
 ### Incidente de seguridad (27 ago 2026)
 
