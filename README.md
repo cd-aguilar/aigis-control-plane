@@ -71,6 +71,9 @@ TaskContract → Agent → ToolRequest → Policy Engine → Sandbox → Executi
 Full spec, threat model, and section-by-section detail:
 **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
 
+Real terminal output from 8/8 tasks run against the actual Claude API,
+plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
+
 ## Status
 
 > Phases 0–6 done (initial MVP scope complete). Domain layer (`TaskContract`, `ToolRequest`,
