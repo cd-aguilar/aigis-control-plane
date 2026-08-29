@@ -38,5 +38,8 @@ instead of the default `LocalCowSandbox`.
 Each run copies `repo/` into an ephemeral sandbox first — running the same
 task twice never mutates the checked-in example.
 
-**Confirmed working (2026-08-27):** `T01` run against the real Claude API
-returned `[PASS]`. T02-T08 haven't been run live yet.
+**Confirmed working (2026-08-29):** all 8 tasks (T01-T08) run against the
+real Claude API (`claude-sonnet-5`) — **8/8 PASS**. Aggregated results
+(success rate, cost-to-pass, latency, ...) are in `docs/ARCHITECTURE.md`
+section 19; re-run `python scripts/aggregate_metrics.py --all` any time to
+recompute them from whatever's in `evidence/`.

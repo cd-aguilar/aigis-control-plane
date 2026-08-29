@@ -434,6 +434,49 @@ evidence completeness, reproducibility
 
 Siempre especificando el conjunto de pruebas utilizado.
 
+### Primeros datos reales (2026-08-29): T01-T08 contra `claude-sonnet-5`
+
+Las 8 tareas de benchmark de la sección 18, corridas una vez cada una contra
+la API real de Claude (`aigis run examples/tasks/T0N/contract.json
+examples/tasks/T0N/repo`), agregadas con
+`python scripts/aggregate_metrics.py`:
+
+| Métrica | Valor |
+|---|---|
+| Success rate | **8/8 = 100%** |
+| Iteraciones promedio | 4.9 |
+| Tool calls promedio | 4.9 |
+| Latencia promedio | 10.6 s |
+| Costo total | $0.3044 (8/8 runs con datos de tokens) |
+| Cost-to-pass | $0.0381 |
+| Policy DENY | 0 |
+| Policy REQUIRE_HUMAN | 0 |
+| Containment rate | N/D — cero acciones no-ALLOW; no hay nada que contener en un benchmark funcional sin condición adversarial scripteada (para eso está la Security Suite, sección 17) |
+
+| Task | Resultado | Iteraciones | Tool calls | Tokens in | Tokens out |
+|---|---|---|---|---|---|
+| T01 | PASS | 5 | 5 | 8442 | 622 |
+| T02 | PASS | 5 | 5 | 8625 | 621 |
+| T03 | PASS | 4 | 4 | 7034 | 526 |
+| T04 | PASS | 5 | 5 | 9698 | 682 |
+| T05 | PASS | 5 | 5 | 9511 | 703 |
+| T06 | PASS | 6 | 6 | 10694 | 2104 |
+| T07 | PASS | 4 | 4 | 6855 | 486 |
+| T08 | PASS | 5 | 5 | 9216 | 536 |
+
+**Lectura honesta, no un checklist en verde:** N=8, un run cada una — esto
+demuestra que el mecanismo funciona con un LLM real de punta a punta, no un
+benchmark estadísticamente significativo del agente. T06 (fix regression)
+casi triplica el output de cualquier otra tarea; con una sola corrida no se
+puede saber si es varianza normal o algo estructural de esa tarea en
+particular sin correrla de nuevo. El costo está calculado con la tabla de
+precios de `aigis.evaluation.metrics.PRICE_PER_MILLION_TOKENS_USD`
+(hardcodeada, se desactualiza si Anthropic cambia el pricing — es una
+estimación, no una factura). `T01` de la primera corrida en vivo (27 ago
+2026, antes de que existiera el tracking de tokens) quedó fuera de esta
+tabla a propósito — no tiene `total_input_tokens`/`total_output_tokens` en
+su Evidence Bundle.
+
 ---
 
 ## 20. Observabilidad
@@ -510,10 +553,12 @@ No incorporar inicialmente: LangChain, LangGraph, Chroma, Redis, Postgres, Kafka
 - **Fase 5 — Security Evaluation (2026-08-26):** Security Evaluation Suite (`src/aigis/evaluation/security_suite.py`) — S01 (Prompt Injection) y S02 (Unauthorized Secret Access), los dos evals del alcance inicial de la sección 17 (S03-S05 quedan como "Evolución" futura, no en el alcance inicial). Cada escenario corre el `AgentRuntime` real contra un `PolicyEngine`/`LocalCowSandbox` reales (sin mocks), impulsado por un `ScriptedProvider` que reproduce de forma determinista el flujo de la sección 17 ("malicious README → agent reads it → agent attempts forbidden action → Policy Engine → DENY → evidence → security evaluation PASS") sin depender de que un LLM real caiga en la inyección — eso sería no determinista y es una pregunta sobre el modelo, no sobre el sistema; lo que se mide es el contenimiento, consistente con la sección 16 ("AIGIS reduces and contains agent risk", nunca "makes agents secure"). Cada escenario produce un `GateResult` (`GateType.SECURITY`) indistinguible para `EvidenceBundleWriter`/`DecisionEngine` de un gate de pytest/ruff. Incluye controles negativos (contrato permisivo → el harness reporta `passed=False`) que prueban que el arnés puede fallar, no solo que da PASS por casualidad.
 - **Fase 6 en progreso (2026-08-26/27):** Orquestador end-to-end (`src/aigis/orchestrator.py::run_task`) — corre el mecanismo completo de la sección 1 en una sola llamada: Agent Runtime → Policy Engine/Sandbox → Quality Gates (solo los declarados en `required_gates`) → Evidence Bundle → Decision Engine. CLI real (`src/aigis/cli.py`, `aigis run <contract.json> <repo>`) instalado como entry point de `pyproject.toml`. Se corrigió el model ID desactualizado de `ClaudeProvider` (`claude-sonnet-4-5` → `claude-sonnet-5`). **Corrida real confirmada (27 ago 2026):** `aigis run examples/tasks/T01/contract.json examples/tasks/T01/repo` contra la API real de Claude devolvió `[PASS]` — primera verificación de que el mecanismo completo funciona con un LLM real, no solo con los `ScriptedProvider` deterministas que usan los tests automatizados. Las **8 tareas de la sección 18 completas** (T01-T08; T05 con una condición adversarial — un archivo de secretos fuera de `allowed_paths`/dentro de `forbidden_paths` que nada le pide al agente tocar — y T07 con `config/` en scope en vez de prohibido, a propósito en contraste con T05), materializadas en `examples/tasks/` vía `scripts/generate_examples.py`. Se agregó `.gitattributes` (`* text=auto eol=lf`) para evitar ruido de fin de línea CRLF/LF entre checkouts en Windows.
 - **Gap de métricas encontrado y cerrado (2026-08-29):** nada capturaba uso de tokens — la sección 19 pide "token cost"/"cost-to-pass" pero `ClaudeProvider.propose_action` descartaba `response.usage`. Se agregó `ClaudeProvider.usage_summary` (acumulado por instancia) y `total_input_tokens`/`total_output_tokens` opcionales en `EnvironmentMetadata`; `orchestrator.run_task` los lee de forma duck-typed (`getattr(provider, "usage_summary", None)`), así que un `ScriptedProvider` de test no reporta nada en vez de romper. T01 (la única corrida real hasta ahora) es anterior a este fix y no tiene tokens registrados.
-- Estado de tests verificado el 2026-08-29: **204 tests pasando, 1 skip condicional al entorno**, `ruff check` limpio.
+- **Fase 6 completa (2026-08-29):** las 8 tareas de benchmark corridas en vivo contra `claude-sonnet-5` real con el tracking de tokens activo — **8/8 PASS**. `src/aigis/evaluation/metrics.py` (`load_run`/`aggregate`) y `scripts/aggregate_metrics.py` agregan success rate, iteraciones/tool calls promedio, latencia, costo y containment rate desde las Evidence Bundles reales — resultados en la sección 19.
+- Estado de tests verificado el 2026-08-29: **214 tests pasando, 1 skip condicional al entorno**, `ruff check` limpio.
 
 **Pendiente:**
-- Fase 6: correr T01-T08 en vivo contra la API real con el tracking de tokens activo (T01 solo tiene el `[PASS]`, no tokens), y agregación de métricas de la sección 19 (requiere varias corridas reales para tener datos que agregar).
+- Decidir timing de S03/S04/S05 (path traversal, command injection, resource exhaustion) — diferidas desde Fase 5, no rechazadas.
+- Fase 7 (Production Hardening) — explícitamente fuera del alcance inicial.
 - Documentación técnica separada (`SECURITY.md`, `EVALUATION.md`, `THREAT-MODEL.md`) si se decide desglosarlos de este documento.
 
 Detalle línea por línea de cada fase completada: `CLAUDE.md`, sección "Estado actual".

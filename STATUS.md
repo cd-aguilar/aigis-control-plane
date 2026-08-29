@@ -19,21 +19,31 @@ Primer caso de uso: un coding agent. La arquitectura no está atada a ese caso �
 | 3 | Policy Engine determinista (ALLOW/DENY/REQUIRE_HUMAN) + Sandbox (LocalCowSandbox + DockerSandbox real, verificado contra un daemon Docker) | ✅ completa |
 | 4 | Quality Gates ejecutables (pytest/ruff, salida estructurada) + Evidence Bundle real (hashes SHA-256) + Decision Engine fail-closed | ✅ completa |
 | 5 | Security Evaluation Suite — S01 Prompt Injection, S02 Unauthorized Secret Access | ✅ completa (S03-S05 quedan diferidas, no rechazadas — ver Pendiente) |
-| 6 | Orquestador end-to-end (`run_task`) + CLI real (`aigis run`) + 8/8 tareas de benchmark materializadas (T01-T08), 1/8 corrida en vivo (T01, PASS) + tracking de tokens/costo listo para la próxima corrida | 🟡 en progreso |
+| 6 | Orquestador end-to-end (`run_task`) + CLI real (`aigis run`) + las 8 tareas de benchmark (T01-T08) **corridas en vivo contra `claude-sonnet-5` real: 8/8 PASS** + métricas de la sección 19 agregadas desde datos reales | ✅ completa |
 | 7 | Production Hardening (human approval, GitHub write access, CI/CD, Credential Broker, RBAC) | fuera del alcance inicial |
 
-**204 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio.**
+**214 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio.**
 
-## Hito reciente: primera corrida real contra Claude
+## Hito: las 8 tareas de benchmark, en vivo, con métricas reales (29 ago 2026)
 
-El 27 ago 2026 se corrió `aigis run examples/tasks/T01/contract.json examples/tasks/T01/repo` contra la API real de Claude (no un provider scripteado de test) y dio:
+Dario corrió las 8 tareas contra la API real de Claude desde su propia terminal (nunca compartió la key en el chat):
 
 ```
-[PASS] T01 -- policy satisfied, all required gates passed, in scope and within limits
-evidence: evidence/run-f9211fe76909/
+[PASS] T01 .. [PASS] T08 -- 8/8, policy satisfied, all required gates passed, in scope and within limits
 ```
 
-Primera prueba end-to-end de que el mecanismo completo (Agent Runtime → Policy Engine/Sandbox → Quality Gates → Evidence Bundle → Decision Engine) funciona con un LLM real, no solo con los `ScriptedProvider` deterministas que usan los tests automatizados (Security Suite, orquestador). Las 8 tareas de benchmark (T01-T08) ya están materializadas en `examples/tasks/` (generadas con `scripts/generate_examples.py` desde `src/aigis/evaluation/benchmark_tasks.py`), pero solo T01 se corrió en vivo hasta ahora.
+Se armó `src/aigis/evaluation/metrics.py` (`load_run`/`aggregate`) + `scripts/aggregate_metrics.py` para agregar la sección 19 desde las Evidence Bundles reales, sin necesidad de instrumentar nada nuevo por corrida:
+
+| Métrica | Valor |
+|---|---|
+| Success rate | **100% (8/8)** |
+| Iteraciones / tool calls promedio | 4.9 |
+| Latencia promedio | 10.6 s |
+| Costo total | $0.3044 |
+| Cost-to-pass | $0.0381 |
+| Policy DENY / REQUIRE_HUMAN | 0 / 0 |
+
+Tabla completa por tarea y la lectura honesta (N=8, un run cada una, no es benchmark estadísticamente significativo del agente — T06 casi triplicó el output de las demás y no se sabe si es varianza normal) en `docs/ARCHITECTURE.md` sección 19. La primera corrida de T01 (27 ago 2026, `run-f9211fe76909`) es anterior al tracking de tokens y quedó fuera de la tabla de costos a propósito.
 
 ## Revisión externa cruzada (27 ago 2026) — tercera ronda
 
@@ -63,18 +73,18 @@ Se agregó la sección **16.1 "Mapeo a OWASP Top 10 for Agentic Applications (20
 - Se revisó el historial completo de commits buscando claves reales expuestas (`sk-ant-...`, valores de `ANTHROPIC_API_KEY`) — no aparece ninguna. El fixture señuelo de la Fase 5 ya no tiene forma de clave real (ver arriba).
 - Sin PRs abiertos, sin ramas obsoletas — todo el trabajo se commitea directo a `main` fase por fase.
 - Documentación al día y pusheada: `README.md`, `docs/ARCHITECTURE.md` (spec completa + sección 16.1), `CLAUDE.md` (historial fase por fase + revisión externa), `STATUS.md` (este documento).
-- `examples/tasks/` — 8/8 tareas de benchmark materializadas y listas para correr con una API key real (`examples/tasks/README.md` tiene las instrucciones). Solo T01 corrida en vivo.
+- `examples/tasks/` — 8/8 tareas de benchmark materializadas y **corridas en vivo, 8/8 PASS** (`examples/tasks/README.md` tiene las instrucciones para repetirlo).
 
-## Gap encontrado y cerrado: métricas de costo (29 ago 2026)
+## Gap encontrado y cerrado antes de correr en vivo: métricas de costo (29 ago 2026)
 
-Antes de gastar más tokens corriendo T02-T08, se detectó que nada capturaba uso de tokens: `ClaudeProvider.propose_action` descartaba `response.usage` de cada llamada, así que "token cost"/"cost-to-pass" (sección 19) iban a quedar vacíos sin importar cuántas tareas se corrieran. Se agregó `ClaudeProvider.usage_summary` (acumulado por instancia) y dos campos opcionales (`total_input_tokens`/`total_output_tokens`) a `EnvironmentMetadata`; `orchestrator.run_task` los lee de forma duck-typed (`getattr(provider, "usage_summary", None)`), así que un `ScriptedProvider` de test simplemente no reporta nada en vez de romper. Probado con un cliente Anthropic stubbeado, sin red — 8 tests nuevos, 204 verdes en total. **T01 (la única corrida real) es anterior a este fix y no tiene tokens registrados** — para tener datos de costo hace falta volver a correrla o aceptar que T01 queda sin ese dato.
+Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada capturaba uso de tokens: `ClaudeProvider.propose_action` descartaba `response.usage` de cada llamada, así que "token cost"/"cost-to-pass" (sección 19) iban a quedar vacíos sin importar cuántas tareas se corrieran. Se agregó `ClaudeProvider.usage_summary` (acumulado por instancia) y dos campos opcionales (`total_input_tokens`/`total_output_tokens`) a `EnvironmentMetadata`; `orchestrator.run_task` los lee de forma duck-typed (`getattr(provider, "usage_summary", None)`), así que un `ScriptedProvider` de test simplemente no reporta nada en vez de romper. Probado con un cliente Anthropic stubbeado, sin red. Gracias a esto, las 8 corridas reales de más arriba sí tienen tokens/costo registrados.
 
 ## Pendiente
 
-1. Fase 6: correr T01-T08 en vivo contra la API real con el tracking de tokens ya activo (T01 solo tiene el `[PASS]` registrado, no tokens), agregación de métricas (sección 19 de `ARCHITECTURE.md` — success rate, iteraciones promedio, tool calls promedio, latencia, costo, cost-to-pass, violaciones de policy; requiere varias corridas reales para tener datos que agregar).
-2. Fase 5: decidir timing de S03 (path traversal), S04 (command injection), S05 (resource exhaustion) — diferidas, no rechazadas; ya cubiertas indirectamente por los tests de Policy Engine/Sandbox de la Fase 3.
-3. Fase 7 (Production Hardening): explícitamente fuera del alcance inicial — no adelantar (rechazado en la revisión externa del 27/8, ver arriba).
-4. Documentación técnica separada (`SECURITY.md`, `EVALUATION.md`, `THREAT-MODEL.md`) si se decide desglosarla de `ARCHITECTURE.md` — la sección 16.1 nueva es candidata natural para sembrar `THREAT-MODEL.md`. Parte del Día 7 del plan original, todavía no decidido.
+1. Fase 5: decidir timing de S03 (path traversal), S04 (command injection), S05 (resource exhaustion) — diferidas, no rechazadas; ya cubiertas indirectamente por los tests de Policy Engine/Sandbox de la Fase 3.
+2. Fase 7 (Production Hardening): explícitamente fuera del alcance inicial — no adelantar (rechazado en la revisión externa del 27/8, ver arriba).
+3. Documentación técnica separada (`SECURITY.md`, `EVALUATION.md`, `THREAT-MODEL.md`) si se decide desglosarla de `ARCHITECTURE.md` — la sección 16.1 nueva es candidata natural para sembrar `THREAT-MODEL.md`. Parte del Día 7 del plan original, todavía no decidido.
+4. Opcional: correr T01-T08 una segunda vez para tener más de un dato por tarea — con N=1 por tarea no se puede distinguir varianza normal de algo estructural (ver T06 en la tabla de arriba).
 
 ### Incidente de seguridad (27 ago 2026)
 

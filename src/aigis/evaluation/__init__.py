@@ -29,6 +29,7 @@ from aigis.evaluation.benchmark_tasks import (
 from aigis.evaluation.benchmark_tasks import materialize as materialize_benchmark_task
 from aigis.evaluation.decision_engine import DecisionEngine
 from aigis.evaluation.gates import PytestGate, QualityGate, RuffGate
+from aigis.evaluation.metrics import AggregateMetrics, RunRecord, aggregate, load_run
 from aigis.evaluation.security_suite import (
     SCENARIOS,
     ScriptedProvider,
@@ -60,4 +61,8 @@ __all__ = [
     "implement_missing_function_task",
     "refactor_duplicated_bug_task",
     "materialize_benchmark_task",
+    "AggregateMetrics",
+    "RunRecord",
+    "aggregate",
+    "load_run",
 ]
