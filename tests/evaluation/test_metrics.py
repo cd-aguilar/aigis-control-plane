@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from aigis.evaluation.metrics import aggregate, load_run
+from aigis.evaluation.metrics import aggregate, aggregate_by_task, load_run
 
 
 def _write_bundle(
@@ -288,3 +288,60 @@ def test_aggregate_handles_missing_token_data_without_crashing(tmp_path: Path) -
 
     assert metrics.runs_with_cost_data == 1
     assert metrics.total_cost_usd == pytest.approx(3.0)
+
+
+# --- aggregate_by_task -----------------------------------------------------------
+
+
+def test_aggregate_by_task_groups_runs_and_computes_per_task_stats(tmp_path: Path) -> None:
+    dirs = []
+    for i, (final, out_tokens) in enumerate([("PASS", 500), ("PASS", 2000), ("PASS", 600)]):
+        task_id = "T06" if i < 2 else "T01"
+        d = tmp_path / f"run-{i}"
+        _write_bundle(
+            d,
+            run_id=f"run-{i}",
+            task_id=task_id,
+            final=final,
+            iteration=1,
+            tool_calls_count=1,
+            attempts=[_attempt("2026-08-29T00:00:05Z", "ALLOW")],
+            started_at="2026-08-29T00:00:00Z",
+            input_tokens=1_000_000,
+            output_tokens=out_tokens,
+        )
+        dirs.append(d)
+    runs = [load_run(d) for d in dirs]
+
+    by_task = aggregate_by_task(runs)
+
+    assert set(by_task) == {"T01", "T06"}
+    assert by_task["T06"].run_count == 2
+    assert by_task["T06"].output_tokens_spread == (500, 2000)
+    assert by_task["T01"].run_count == 1
+    assert by_task["T01"].output_tokens_spread == (600, 600)
+
+
+def test_aggregate_by_task_success_rate_is_per_task_not_global(tmp_path: Path) -> None:
+    dirs = []
+    for i, final in enumerate(["PASS", "FAIL"]):
+        d = tmp_path / f"run-{i}"
+        _write_bundle(
+            d,
+            run_id=f"run-{i}",
+            task_id="T03",
+            final=final,
+            iteration=1,
+            tool_calls_count=1,
+            attempts=[_attempt("2026-08-29T00:00:05Z", "ALLOW")],
+            started_at="2026-08-29T00:00:00Z",
+            input_tokens=None,
+            output_tokens=None,
+        )
+        dirs.append(d)
+    runs = [load_run(d) for d in dirs]
+
+    by_task = aggregate_by_task(runs)
+
+    assert by_task["T03"].success_rate == pytest.approx(0.5)
+    assert by_task["T03"].output_tokens_spread is None  # no token data on either run

@@ -17,6 +17,7 @@ treat it as an estimate, not a bill.
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -117,6 +118,11 @@ def aggregate(runs: list[RunRecord]) -> AggregateMetrics:
     ``None``, not a misleading 0.0 or 1.0. Contrast with
     ``security_suite.py``, whose scenarios exist specifically to produce
     the DENY this metric is about.
+
+    This mixes every task into a single bag -- fine for a headline "8/8,
+    100%" number, but it can't tell you whether one task is consistently
+    more expensive than the rest or just had one noisy run. Once there's
+    more than one run per task, use ``aggregate_by_task`` for that.
     """
     if not runs:
         raise ValueError("aggregate() needs at least one run")
@@ -144,10 +150,74 @@ def aggregate(runs: list[RunRecord]) -> AggregateMetrics:
     )
 
 
+@dataclass(frozen=True)
+class TaskAggregate:
+    """Same shape of question as ``AggregateMetrics``, scoped to one task_id.
+
+    Exists specifically to answer "is this task's cost/output consistently
+    high, or was that one run noise?" -- a question ``aggregate()`` cannot
+    answer because it collapses every task into one number. ``spread``
+    reports (min, max) output_tokens across the task's runs so a one-run
+    task (spread == (x, x)) is visibly not yet evidence of anything, and a
+    wide spread across N>1 runs is visibly worth a closer look.
+    """
+
+    task_id: str
+    run_count: int
+    success_rate: float
+    avg_iterations: float
+    avg_tool_calls: float
+    avg_latency_seconds: float | None
+    avg_cost_usd: float | None
+    output_tokens_spread: tuple[int, int] | None  # (min, max) across this task's runs
+    per_run: list[RunRecord]
+
+
+def aggregate_by_task(runs: list[RunRecord]) -> dict[str, TaskAggregate]:
+    """Groups ``runs`` by ``task_id`` and computes per-task stats, keyed by
+    task_id and sorted for stable, reproducible output.
+
+    With N=1 per task (the 2026-08-29 baseline), every ``TaskAggregate``
+    here is just that one run reshaped -- not more meaningful than reading
+    ``per_run`` directly. The point is what happens once a second pass
+    exists: two ``RunRecord``s for T06, say, turn into one ``TaskAggregate``
+    with ``run_count=2`` and a real ``output_tokens_spread``, which is what
+    actually distinguishes "T06 is structurally heavier" from "that one run
+    was noise" -- see EVALUATION.md.
+    """
+    by_task: dict[str, list[RunRecord]] = defaultdict(list)
+    for run in runs:
+        by_task[run.task_id].append(run)
+
+    result: dict[str, TaskAggregate] = {}
+    for task_id, task_runs in sorted(by_task.items()):
+        passed = [r for r in task_runs if r.final == "PASS"]
+        costs = [r.cost_usd for r in task_runs if r.cost_usd is not None]
+        latencies = [r.latency_seconds for r in task_runs if r.latency_seconds is not None]
+        output_tokens = [r.output_tokens for r in task_runs if r.output_tokens is not None]
+
+        result[task_id] = TaskAggregate(
+            task_id=task_id,
+            run_count=len(task_runs),
+            success_rate=len(passed) / len(task_runs),
+            avg_iterations=_avg([r.iterations for r in task_runs]),
+            avg_tool_calls=_avg([r.tool_calls for r in task_runs]),
+            avg_latency_seconds=_avg(latencies),
+            avg_cost_usd=_avg(costs),
+            output_tokens_spread=(min(output_tokens), max(output_tokens))
+            if output_tokens
+            else None,
+            per_run=task_runs,
+        )
+    return result
+
+
 __all__ = [
     "PRICE_PER_MILLION_TOKENS_USD",
     "RunRecord",
     "AggregateMetrics",
+    "TaskAggregate",
     "load_run",
     "aggregate",
+    "aggregate_by_task",
 ]

@@ -4,6 +4,8 @@ metrics for a set of real Evidence Bundles.
     python scripts/aggregate_metrics.py evidence/run-a evidence/run-b ...
     python scripts/aggregate_metrics.py --all        # every evidence/run-*
     python scripts/aggregate_metrics.py --all --json
+    python scripts/aggregate_metrics.py --all --per-task   # grouped by task_id,
+                                                            # meaningful once N>1 per task
 """
 
 from __future__ import annotations
@@ -13,11 +15,28 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from aigis.evaluation.metrics import aggregate, load_run
+from aigis.evaluation.metrics import aggregate, aggregate_by_task, load_run
 
 
 def _default_evidence_dirs(evidence_root: Path) -> list[Path]:
     return sorted(p for p in evidence_root.glob("run-*") if p.is_dir())
+
+
+def _print_per_task(runs: list) -> None:
+    by_task = aggregate_by_task(runs)
+    print(f"{'task':<6} {'runs':>4} {'pass%':>6} {'iter':>6} {'calls':>6} {'out_tok spread':>16}")
+    for task_id, agg in by_task.items():
+        spread = (
+            f"{agg.output_tokens_spread[0]}-{agg.output_tokens_spread[1]}"
+            if agg.output_tokens_spread is not None
+            else "-"
+        )
+        print(
+            f"{task_id:<6} {agg.run_count:>4} {agg.success_rate:>6.0%} "
+            f"{agg.avg_iterations:>6.1f} {agg.avg_tool_calls:>6.1f} {spread:>16}"
+        )
+        if agg.run_count == 1:
+            print("       (single run -- spread is not evidence of anything yet)")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -30,6 +49,11 @@ def main(argv: list[str] | None = None) -> None:
         "--evidence-root", type=Path, default=Path("evidence"), help="used with --all"
     )
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--per-task",
+        action="store_true",
+        help="group by task_id instead of one global aggregate -- see aggregate_by_task",
+    )
     args = parser.parse_args(argv)
 
     run_dirs = _default_evidence_dirs(args.evidence_root) if args.all else args.run_dirs
@@ -37,6 +61,18 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("no run directories given -- pass some, or use --all")
 
     runs = [load_run(d) for d in run_dirs]
+
+    if args.per_task:
+        if args.json:
+            payload = {
+                task_id: {**asdict(agg), "per_run": [asdict(r) for r in agg.per_run]}
+                for task_id, agg in aggregate_by_task(runs).items()
+            }
+            print(json.dumps(payload, indent=2))
+        else:
+            _print_per_task(runs)
+        return
+
     metrics = aggregate(runs)
 
     if args.json:
