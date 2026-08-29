@@ -16,6 +16,11 @@ evaluadores deterministas en vez de LLM-as-judge, y los principios de
 [12-Factor Agents](https://github.com/humanlayer/12-factor-agents).
 
 Documento completo de arquitectura + estado: `docs/ARCHITECTURE.md`.
+Desglosado desde el 29/08 en `docs/THREAT-MODEL.md` (amenazas + mapeo
+OWASP ASI Top 10 2026), `docs/SECURITY.md` (postura y controles de
+seguridad) y `docs/EVALUATION.md` (security evals + benchmark +
+métricas) -- `ARCHITECTURE.md` deja pointers en el lugar de cada
+sección movida, no rompe ninguna referencia cruzada existente.
 
 ## Qué es
 Control plane de seguridad, autorización, ejecución aislada, evidencia y
@@ -55,11 +60,13 @@ aigis-control-plane/
     providers/    (claude)
     policy/       (engine, config, policy.yaml, executor)
     sandbox/      (base, local_cow, docker_sandbox)
-    evaluation/   (gates, decision_engine, security_suite, benchmark_tasks)
+    evaluation/   (gates, decision_engine, security_suite, benchmark_tasks, metrics)
     evidence/     (bundle)
     orchestrator.py
     cli.py
-  tests/  examples/tasks/  scripts/  docs/  data/{raw,processed}/ (sin uso)
+  tests/  examples/tasks/  data/{raw,processed}/ (sin uso)
+  scripts/  (generate_examples.py, aggregate_metrics.py --per-task)
+  docs/     (ARCHITECTURE.md, THREAT-MODEL.md, SECURITY.md, EVALUATION.md, DEMO.md)
   STATUS.md
 ```
 
@@ -95,6 +102,7 @@ Attempts, nunca la lee el Decision Engine (Fase 4). 88 tests unitarios
 **Gap encontrado y cerrado (2026-08-29):** nada capturaba uso de tokens — la sección 19 pide "token cost"/"cost-to-pass" como métricas del run, pero `ClaudeProvider.propose_action` descartaba `response.usage` sin guardarlo en ningún lado. Se agregó `ClaudeProvider.usage_summary` (acumulado por instancia, no compromete el invariante de "stateless entre llamadas" del Provider protocol, que es sobre qué acción proponer, no sobre telemetría) y dos campos opcionales (`total_input_tokens`/`total_output_tokens`) a `EnvironmentMetadata`; `orchestrator.run_task` los lee vía `getattr(provider, "usage_summary", None)` duck-typed, así que un `ScriptedProvider` (Security Suite, tests del propio orquestador) simplemente no reporta nada en vez de romper. Probado con un cliente Anthropic stubbeado, sin red. 8 tests nuevos (204 verdes, 1 skip condicional al entorno), `ruff check` limpio. T01 (la única corrida real hasta ahora) corrió antes de este fix y no tiene tokens registrados en su Evidence Bundle.
 **Fase 6 completa (2026-08-29):** Dario corrió las 8 tareas de benchmark en vivo contra `claude-sonnet-5` real (con el tracking de tokens ya activo) — **8/8 PASS**. Se agregó `src/aigis/evaluation/metrics.py` (`load_run`/`aggregate`, computa success rate, iteraciones/tool calls promedio, latencia, costo vía una tabla de precios por modelo, cost-to-pass, containment rate) y `scripts/aggregate_metrics.py` como CLI sobre eso. Resultados agregados en `docs/ARCHITECTURE.md` sección 19: 100% success rate, 4.9 iteraciones/tool calls promedio, 10.6s de latencia promedio, $0.30 de costo total, $0.038 cost-to-pass, cero DENY/REQUIRE_HUMAN (containment rate no aplica — sin condición adversarial scripteada en estas 8 tareas, para eso está la Security Suite). N=8 con un run cada una: demuestra que el mecanismo funciona con un LLM real de punta a punta, no es un benchmark estadísticamente significativo del agente — documentado así explícitamente, no como checklist en verde. 10 tests nuevos (214 verdes, 1 skip condicional al entorno), `ruff check` limpio.
 **Fase 5 cerrada del todo (2026-08-29):** S03 (Path Traversal), S04 (Command Injection), S05 (Resource Exhaustion) — las 3 evals que habían quedado como "evolución futura". Mismo patrón que S01/S02: `AgentRuntime` real contra `PolicyEngine`/`LocalCowSandbox` reales, con controles negativos. S05 no encaja en el molde "una request debe ser DENY" (no hay una request individual que denegar) — se agregó `ResourceExhaustionScenario`/`run_resource_exhaustion_scenario` e `InfiniteProvider` (nunca llama `ClaimDone`), que verifica que el circuit breaker del contrato (`max_iterations`/`max_tool_calls`) termina el run antes de necesitar el safety cap absoluto de 1000 iteraciones de `AgentRuntime`. Las 5 security evals de la sección 17 quedan completas. 7 tests nuevos (221 verdes, 1 skip condicional al entorno), `ruff check` limpio.
+**Documentación técnica desglosada y herramienta de métricas por tarea (2026-08-29):** `docs/ARCHITECTURE.md` seccion 16 (Security Model + mapeo OWASP), 17 (Security Evaluation Suite), 18 (benchmark) y 19 (métricas) se movieron a `docs/THREAT-MODEL.md`, `docs/SECURITY.md` y `docs/EVALUATION.md` respectivamente -- `ARCHITECTURE.md` deja un pointer con el mismo número de sección en cada lugar movido, ninguna referencia cruzada existente ("ver sección 21", etc.) se rompió. Se agregó `aggregate_by_task()` en `metrics.py` + `scripts/aggregate_metrics.py --per-task`, necesario para que una segunda pasada del benchmark (N>1 por tarea) pueda distinguir "T06 es estructuralmente más caro" de "esa corrida fue ruido" -- `aggregate()` sola mezcla todas las tareas en una bolsa y no puede responder esa pregunta. Ya corre contra las Evidence Bundles reales existentes: T01-T05 y T07 ya tienen 2-3 corridas acumuladas, T06 y T08 siguen en N=1. 2 tests nuevos (223 verdes, 1 skip condicional al entorno), `ruff check` limpio.
 Sin implementar aun: Fase 7 (Production Hardening, fuera del alcance inicial).
 Detalle completo en `docs/ARCHITECTURE.md` sección "Estado actual".
 
@@ -223,5 +231,13 @@ diferidos y rechazados, discutidos con Dario en sesión de Cowork:
       cada una, no estadísticamente significativo — documentado como tal)
 - [x] S03/S04/S05 (path traversal, command injection, resource
       exhaustion) — Security Evaluation Suite completa, 5/5 evals
+- [x] Documentación técnica desglosada: `docs/THREAT-MODEL.md`,
+      `docs/SECURITY.md`, `docs/EVALUATION.md` separados de
+      `ARCHITECTURE.md` (29 ago 2026)
+- [ ] Segunda pasada del benchmark (N>1 por tarea): correr T06 y T08
+      en vivo (siguen en N=1; T06 es el outlier de la sección 19) —
+      necesita la API key real de Dario, se corre desde su propia
+      terminal, no desde Cowork. `scripts/aggregate_metrics.py --all
+      --per-task` ya está listo para leer el resultado agrupado.
 - [ ] Fase 7 (Production Hardening) — explícitamente fuera del alcance
       inicial, no empezar sin decisión explícita

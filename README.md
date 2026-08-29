@@ -68,8 +68,12 @@ TaskContract → Agent → ToolRequest → Policy Engine → Sandbox → Executi
   An ambiguous state (missing gate, `REQUIRE_HUMAN`) escalates to a human
   instead of guessing.
 
-Full spec, threat model, and section-by-section detail:
-**[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
+Full spec and section-by-section detail:
+**[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**. Threat model and OWASP
+ASI Top 10 2026 mapping: **[`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md)**.
+Security posture and controls: **[`docs/SECURITY.md`](docs/SECURITY.md)**.
+Security evals, benchmark suite, and metrics:
+**[`docs/EVALUATION.md`](docs/EVALUATION.md)**.
 
 Real terminal output from 8/8 tasks run against the actual Claude API,
 plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
@@ -104,14 +108,13 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > rate, 4.9 average iterations/tool calls, 10.6s average latency, $0.30
 > total cost, $0.038 cost-to-pass — reported honestly as N=8 (one run each),
 > not a statistically significant benchmark.
-> **221 unit tests green, `ruff check` clean.**
+> **223 unit tests green, `ruff check` clean.**
 >
 > Everything from the initial MVP scope (ARCHITECTURE.md section 21) is
 > done. What's left is explicitly out of scope for now: Phase 7 (Production
 > Hardening — human approval, GitHub write access, CI/CD, a real Credential
 > Broker, RBAC). See `examples/tasks/README.md` to run a benchmark task
-> yourself, or `docs/ARCHITECTURE.md` section 19 for the full results
-> table.
+> yourself, or `docs/EVALUATION.md` for the full results table.
 
 ## Repo layout
 
@@ -128,7 +131,7 @@ src/aigis/
   evidence/    Evidence Bundle writer
   orchestrator.py   wires the whole mechanism into one run_task() call
   cli.py            `aigis run <contract.json> <repo>`
-tests/   docs/   examples/tasks/   scripts/
+tests/   docs/   examples/tasks/   scripts/  (aggregate_metrics.py --per-task for N>1/task)
 ```
 
 ## Where this fits

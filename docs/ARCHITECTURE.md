@@ -4,7 +4,7 @@
 >
 > El agente puede proponer y ejecutar acciones. **AIGIS determina qué está autorizado, qué ocurrió realmente y si la tarea puede considerarse terminada.**
 
-**Última actualización:** 2026-08-17
+**Última actualización:** 2026-08-29
 
 ---
 
@@ -257,7 +257,7 @@ Determinista y externo al LLM: `ToolRequest → Policy Engine → PolicyDecision
 {"decision": "DENY", "policy_id": "CMD-001", "reason": "Executable not in allowlist", "risk": "HIGH"}
 ```
 
-Esto convierte la autorización en parte de la evidencia.
+Esto convierte la autorización en parte de la evidencia. Ver `SECURITY.md` para el detalle de implementación (orden de reglas, `policy_version`, allowlist).
 
 ---
 
@@ -277,7 +277,7 @@ class Sandbox:
     destroy()
 ```
 
-Esto permite cambiar posteriormente la implementación sin modificar el resto del control plane.
+Esto permite cambiar posteriormente la implementación sin modificar el resto del control plane. Ver `SECURITY.md` para el detalle de las dos implementaciones (`LocalCowSandbox`/`DockerSandbox`).
 
 ---
 
@@ -308,10 +308,10 @@ evidence/<run-id>/
 run_id, timestamp, model_provider, model, model_version, prompt_version,
 agent_version, task_contract_version, policy_version, git_commit,
 sandbox_image, sandbox_image_digest, python_version, dependency_lock_hash,
-host_platform
+host_platform, total_input_tokens, total_output_tokens
 ```
 
-Permite comparar posteriormente Model A vs Model B, Prompt v1 vs v2, Agent v1 vs v2, Policy v1 vs v2, sin perder trazabilidad.
+Permite comparar posteriormente Model A vs Model B, Prompt v1 vs v2, Agent v1 vs v2, Policy v1 vs v2, sin perder trazabilidad. `total_input_tokens`/`total_output_tokens` se sumaron el 29/08 — ver `EVALUATION.md` sobre el gap de costo que esto cierra.
 
 ---
 
@@ -327,154 +327,27 @@ Esto permite distinguir correctamente: agente intenta acción prohibida → Poli
 
 ---
 
-## 16. Security Model
+## 16. Security Model (ver `docs/THREAT-MODEL.md`)
 
-| Amenaza | Mitigación |
-|---|---|
-| Prompt injection | Policy Engine + sandbox |
-| Repo malicioso | ejecución aislada |
-| Secret access | path policy + ausencia de credenciales sensibles |
-| Command injection | argumentos estructurados + allowlist |
-| Network exfiltration | network disabled |
-| Resource exhaustion | CPU/memory/PID/time limits |
-| Infinite agent loop | iteration/tool/runtime limits |
-| Unauthorized file modification | path allowlist |
-| Evidence tampering | post-run artifacts + hashes |
-
-La afirmación de seguridad debe ser: **"AIGIS reduces and contains agent risk through layered controls."** Nunca: "AIGIS makes agents secure."
-
-### 16.1 Mapeo a OWASP Top 10 for Agentic Applications (2026)
-
-Correspondencia entre las amenazas de la tabla anterior y el [OWASP Top 10 for
-Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/)
-(`ASI01`-`ASI10`, OWASP GenAI Security Project / Agentic Security Initiative).
-No es una checklist en verde: el valor de esta tabla está en marcar también lo
-que queda **fuera de alcance por diseño** (sección 21), no solo lo cubierto.
-
-| ASI | Nombre | Cobertura en AIGIS | Control(es) relevante(s) | Nota |
-|---|---|---|---|---|
-| ASI01 | Agent Goal Hijack | ✅ Cubierto | Policy Engine deny-by-default + sandbox (fila "Prompt injection") | Demostrado con evidencia reproducible por S01 (sección 17), no solo documentado. |
-| ASI02 | Tool Misuse and Exploitation | ✅ Cubierto | Allowlist de paths (`read_file`/`patch_file`) + allowlist de comandos (`run_command`) — filas "Secret access" y "Unauthorized file modification" | Demostrado end-to-end por S02 (sección 17). |
-| ASI03 | Identity and Privilege Abuse | 🟡 Parcial | Least privilege por tool scoping (sección 3.4) | Sin identidad/credencial distinta por agente — el Credential Broker que cerraría esto es Fase 7, explícitamente fuera del alcance inicial (sección 21). |
-| ASI04 | Agentic Supply Chain Vulnerabilities | ⬜ Fuera de alcance | — | AIGIS no carga tools ni providers de terceros en runtime: un solo LLM, un solo rol de agente, sin multi-provider (sección 21). Vuelve a ser relevante si el roadmap de la sección 26 avanza. |
-| ASI05 | Unexpected Code Execution (RCE) | ✅ Cubierto | Sandbox aislado (`LocalCowSandbox`/`DockerSandbox`) + comandos como argv, nunca shell string — filas "Repo malicioso" y "Command injection" | El diseño de `ToolRequest` (sección 9) rechaza esta clase de ataque por construcción, no la filtra después. |
-| ASI06 | Memory and Context Poisoning | ⬜ Fuera de alcance | — | `TaskState` es stateless entre corridas; sin RAG ni memoria persistente (excluido explícitamente, sección 21). |
-| ASI07 | Insecure Inter-Agent Communication | ⬜ No aplica | — | Sistema de un solo agente; no hay comunicación inter-agente que asegurar (excluido explícitamente, sección 21). |
-| ASI08 | Cascading Failures | ⬜ No aplica todavía | — | Un agente, una tarea por corrida — no hay red de agentes donde una falla se propague. Vuelve a ser relevante si AIGIS pasa a ser infraestructura compartida entre varios tipos de agente (sección 26). |
-| ASI09 | Human-Agent Trust Exploitation | 🟡 Parcial | `AgentClaim` nunca lo lee el Decision Engine (sección 8) | Mitiga la sobre-confianza en lo que el agente *dice* que hizo; falta el flujo de aprobación humana en sí — `REQUIRE_HUMAN` decide, pero no hay UI de aprobación todavía (Fase 7). |
-| ASI10 | Rogue Agents | 🟡 Parcial | Circuit breaker (`max_iterations`/`max_runtime_seconds`/`max_tool_calls`) + Decision Engine fail-closed — fila "Infinite agent loop" | Contiene un agente que no converge o se desvía dentro de una corrida; no hay monitoreo de comportamiento entre corridas o sesiones. |
-
-Tres filas de la tabla de la sección 16 no tienen un ítem ASI dedicado y
-quedan fuera de esta correspondencia 1:1 a propósito: "Network exfiltration"
-y "Resource exhaustion" son controles de contención transversales que
-sostienen varios ítems ASI a la vez (ASI01, ASI02, ASI05) más que responder a
-uno solo; "Evidence tampering" no es una amenaza de comportamiento del
-agente sino de integridad del propio control plane — el Top 10 de OWASP
-enumera riesgos del agente, no del sistema de auditoría que lo vigila. Es
-exactamente lo que motiva evolucionar el Evidence Bundle hacia attestations
-firmadas (sección 13).
-
-**Resumen honesto:** de los 10 ítems, 3 están cubiertos con evidencia
-reproducible (ASI01, ASI02, ASI05), 3 están parcialmente cubiertos porque el
-mecanismo existe pero le falta una pieza ya presente en el roadmap (ASI03,
-ASI09, ASI10 — las tres resuelven en Fase 7), y 4 quedan fuera del alcance
-actual por diseño, no por descuido (ASI04, ASI06, ASI07, ASI08 — todos
-dependen de capacidades que el alcance inicial excluye explícitamente:
-multi-provider, RAG/memoria, multi-agente). Esta correspondencia es, en sí
-misma, evidencia de que "minimize the blast radius by design" (sección 3.7)
-no es una frase vacía: se puede señalar con precisión qué minimiza hoy y qué
-todavía no.
+Desglosado a su propio documento el 2026-08-29: la tabla de amenazas/mitigaciones y el mapeo completo a OWASP Top 10 for Agentic Applications 2026 (ASI01-ASI10) viven en **`docs/THREAT-MODEL.md`**.
 
 ---
 
-## 17. Security Evaluation Suite
+## 17. Security Evaluation Suite (ver `docs/EVALUATION.md`)
 
-La seguridad forma parte del sistema de evaluación, no es documentación decorativa.
-
-**Completo (2026-08-29):** S01 — Prompt Injection, S02 — Unauthorized Secret Access, S03 — Path Traversal, S04 — Command Injection, S05 — Resource Exhaustion. Las 5 evals originalmente planeadas están implementadas en `src/aigis/evaluation/security_suite.py`.
-
-Flujo ejemplo (S01-S04): malicious README → agent reads it → agent attempts forbidden action → Policy Engine → DENY → evidence → security evaluation PASS. S05 no encaja en ese flujo — no hay una request que denegar, sino un agente que nunca decide parar por su cuenta; lo que se verifica ahí es que el circuit breaker del contrato (`max_iterations`/`max_tool_calls`/`max_runtime_seconds`, sección 16 "Infinite agent loop") termina el run de forma determinista, sin depender del safety cap absoluto de `AgentRuntime` (que es un backstop, no el mecanismo primario).
-
-La métrica debe hablar de **"containment against the tested attack set"**, nunca de "100% secure".
+Desglosado a su propio documento el 2026-08-29: las 5 security evals (S01-S05, sección "Security Evaluation Suite" completa desde el 29/08) viven en **`docs/EVALUATION.md`**.
 
 ---
 
-## 18. Evaluation Suite funcional
+## 18. Evaluation Suite funcional (ver `docs/EVALUATION.md`)
 
-Conjunto inicial de ocho tareas representativas:
-
-```text
-T01 — Fix failing test
-T02 — Implement missing function
-T03 — Fix edge case
-T04 — Refactor function
-T05 — Add validation
-T06 — Fix regression
-T07 — Configuration change
-T08 — Documentation/code task
-```
-
-Cada task define: initial state, expected behavior, allowed files, forbidden files, expected tests, success criteria, adversarial conditions. La suite prioriza **reproducibilidad y auditabilidad**, no volumen.
+Desglosado a su propio documento el 2026-08-29: las 8 tareas de benchmark (T01-T08) viven en **`docs/EVALUATION.md`**.
 
 ---
 
-## 19. Métricas
+## 19. Métricas (ver `docs/EVALUATION.md`)
 
-AIGIS no compite solamente por porcentaje de tareas resueltas.
-
-```text
-success rate, average iterations, average tool calls, latency, token cost,
-cost-to-pass, policy violations, unauthorized actions, containment rate,
-evidence completeness, reproducibility
-```
-
-- **Cost-to-pass** = costo total de ejecución / tasks exitosas
-- **Containment rate** = acciones no autorizadas bloqueadas / acciones no autorizadas intentadas
-
-Siempre especificando el conjunto de pruebas utilizado.
-
-### Primeros datos reales (2026-08-29): T01-T08 contra `claude-sonnet-5`
-
-Las 8 tareas de benchmark de la sección 18, corridas una vez cada una contra
-la API real de Claude (`aigis run examples/tasks/T0N/contract.json
-examples/tasks/T0N/repo`), agregadas con
-`python scripts/aggregate_metrics.py`:
-
-| Métrica | Valor |
-|---|---|
-| Success rate | **8/8 = 100%** |
-| Iteraciones promedio | 4.9 |
-| Tool calls promedio | 4.9 |
-| Latencia promedio | 10.6 s |
-| Costo total | $0.3044 (8/8 runs con datos de tokens) |
-| Cost-to-pass | $0.0381 |
-| Policy DENY | 0 |
-| Policy REQUIRE_HUMAN | 0 |
-| Containment rate | N/D — cero acciones no-ALLOW; no hay nada que contener en un benchmark funcional sin condición adversarial scripteada (para eso está la Security Suite, sección 17) |
-
-| Task | Resultado | Iteraciones | Tool calls | Tokens in | Tokens out |
-|---|---|---|---|---|---|
-| T01 | PASS | 5 | 5 | 8442 | 622 |
-| T02 | PASS | 5 | 5 | 8625 | 621 |
-| T03 | PASS | 4 | 4 | 7034 | 526 |
-| T04 | PASS | 5 | 5 | 9698 | 682 |
-| T05 | PASS | 5 | 5 | 9511 | 703 |
-| T06 | PASS | 6 | 6 | 10694 | 2104 |
-| T07 | PASS | 4 | 4 | 6855 | 486 |
-| T08 | PASS | 5 | 5 | 9216 | 536 |
-
-**Lectura honesta, no un checklist en verde:** N=8, un run cada una — esto
-demuestra que el mecanismo funciona con un LLM real de punta a punta, no un
-benchmark estadísticamente significativo del agente. T06 (fix regression)
-casi triplica el output de cualquier otra tarea; con una sola corrida no se
-puede saber si es varianza normal o algo estructural de esa tarea en
-particular sin correrla de nuevo. El costo está calculado con la tabla de
-precios de `aigis.evaluation.metrics.PRICE_PER_MILLION_TOKENS_USD`
-(hardcodeada, se desactualiza si Anthropic cambia el pricing — es una
-estimación, no una factura). `T01` de la primera corrida en vivo (27 ago
-2026, antes de que existiera el tracking de tokens) quedó fuera de esta
-tabla a propósito — no tiene `total_input_tokens`/`total_output_tokens` en
-su Evidence Bundle.
+Desglosado a su propio documento el 2026-08-29: la tabla de métricas agregadas de las 8 corridas reales, y el estado de la segunda pasada (N>1 por tarea) en curso, viven en **`docs/EVALUATION.md`**.
 
 ---
 
@@ -501,30 +374,32 @@ El alcance inicial debe demostrar el mecanismo completo: `TaskContract → Agent
 
 Estas características pertenecen al roadmap, no al núcleo inicial.
 
+**El alcance inicial (Fases 0-6) está completo desde el 2026-08-29**: las 5 security evals, las 8 tareas de benchmark corridas en vivo con PASS y las métricas agregadas (`docs/EVALUATION.md`) cierran exactamente lo que esta sección definía como objetivo. Lo que queda (sección 24, "Pendiente") es explícitamente Fase 7 o trabajo discrecional, no una pieza faltante del alcance original.
+
 ---
 
 ## 22. Arquitectura del repositorio
 
-Refleja la estructura real del repo a partir de Fase 6 (confirmada contra `git ls-files` el 2026-08-27) — no el scaffold aspiracional original de Fase 0. `evals/` y un `sandbox/` a nivel raíz existieron como carpetas vacías (`.gitkeep`) desde el scaffold inicial y nunca se usaron: el código real siempre vivió en `src/aigis/evaluation/` y `src/aigis/sandbox/`; se eliminaron para no confundir a otra sesión con dos carpetas de nombre casi igual. `data/{raw,processed}/` queda como placeholder sin uso — este proyecto no tiene pipeline de datos, no hay ítem del roadmap que lo requiera.
+Refleja la estructura real del repo (confirmada contra `git ls-files` el 2026-08-29) — no el scaffold aspiracional original de Fase 0. `evals/` y un `sandbox/` a nivel raíz existieron como carpetas vacías (`.gitkeep`) desde el scaffold inicial y nunca se usaron: el código real siempre vivió en `src/aigis/evaluation/` y `src/aigis/sandbox/`; se eliminaron para no confundir a otra sesión con dos carpetas de nombre casi igual. `data/{raw,processed}/` queda como placeholder sin uso — este proyecto no tiene pipeline de datos, no hay ítem del roadmap que lo requiera.
 
 ```text
 aigis-control-plane/
 ├── src/aigis/
-│   ├── domain/       (task, state, attempt, evidence, decision)
-│   ├── agent/        (runtime, reducer, tools)
+│   ├── domain/       (task, state, attempt, evidence, decision, agent_claim)
+│   ├── agent/        (runtime, reducer, tools, provider, executor)
 │   ├── providers/    (claude)
 │   ├── policy/       (engine, config, policy.yaml, executor)
 │   ├── sandbox/      (base, local_cow, docker_sandbox)
-│   ├── evaluation/   (gates, decision_engine, security_suite, benchmark_tasks)
+│   ├── evaluation/   (gates, decision_engine, security_suite, benchmark_tasks, metrics)
 │   ├── evidence/     (bundle)
 │   ├── orchestrator.py   (run_task: corre el mecanismo completo de punta a punta)
 │   └── cli.py             (`aigis run <contract.json> <repo>`)
 ├── tests/            (misma forma que src/aigis/, uno a uno)
-├── examples/tasks/   (T01/T02/T05 materializadas — ver examples/tasks/README.md)
-├── scripts/          (generate_examples.py)
-├── docs/             (ARCHITECTURE.md, este documento)
+├── examples/tasks/   (T01-T08 materializadas, 8/8 — ver examples/tasks/README.md)
+├── scripts/          (generate_examples.py, aggregate_metrics.py)
+├── docs/             (ARCHITECTURE.md, THREAT-MODEL.md, SECURITY.md, EVALUATION.md, DEMO.md)
 ├── data/{raw,processed}/   (placeholder sin uso)
-└── CLAUDE.md  README.md  STATUS.md  .gitignore  .env.example  pyproject.toml
+└── CLAUDE.md  README.md  STATUS.md  .gitignore  .gitattributes  .env.example  pyproject.toml
 ```
 
 ---
@@ -539,26 +414,30 @@ No incorporar inicialmente: LangChain, LangGraph, Chroma, Redis, Postgres, Kafka
 
 ## 24. Estado actual
 
+**MVP (Fases 0-6) completo desde el 2026-08-29.** 223 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio.
+
 **Completado:**
 - Arquitectura conceptual y tesis del proyecto consolidadas (este documento).
-- Alcance inicial definido.
+- Alcance inicial definido y cerrado (sección 21).
 - `CLAUDE.md` y `README.md` del proyecto escritos.
 - Repositorio de GitHub identificado y renombrado a **`cd-aguilar/aigis-control-plane`**; `git init` + primer commit hechos, remoto conectado y con `git push -u origin main` ya realizado (2026-08-25).
 - Gestor de dependencias definido (`pyproject.toml`: Pydantic, pytest, pytest-json-report, ruff, pyyaml, anthropic).
-- **Fase 0/1 — Core Control Plane (2026-08-24):** domain layer completo como Pydantic models en `src/aigis/domain/` — `TaskContract`, `ToolRequest`, `PolicyDecision`, `Attempt`, `TaskState`, `GateResult`, `Evidence`/`EnvironmentMetadata`, `Decision`. La fórmula del Decision Engine (`contract_valid AND policy_ok AND tests_pass AND lint_pass AND scope_ok AND resource_limits_ok => PASS`) y el rechazo estructural de comandos tipo shell-string en `ToolRequest` ya están enforced por validadores Pydantic.
-- **Fase 2 — Agent Execution (2026-08-25):** Agent Runtime como orquestador delgado sobre un reducer sin I/O (`src/aigis/agent/`); `Provider`/`ToolExecutor` como protocolos. `ClaudeProvider` (`src/aigis/providers/claude.py`) arma el prompt, reconstruye la conversación desde `TaskState` (stateless entre llamadas) y parsea la respuesta. Los 3 tools (`read_file`/`patch_file`/`run_command`) tienen su JSON schema y mapean a `ToolRequest`. `AgentClaim` agregado al domain layer — nunca leído por el Decision Engine.
-- **Fase 3 — Security Boundary (2026-08-25):** Policy Engine determinista (`src/aigis/policy/`) — ALLOW/DENY/REQUIRE_HUMAN sobre `allowed_paths`/`forbidden_paths` del contrato y un allowlist de comandos en `policy.yaml`, con el mapeo de `risk_level` (CRITICAL deniega todo, HIGH exige humano) wireado. Sandbox (`src/aigis/sandbox/`): `LocalCowSandbox` (copia efímera copy-on-write, límites de recursos POSIX, diff unificado) y `DockerSandbox` (sin red, non-root, filesystem read-only + tmpfs, límites de memoria/CPU/PIDs) — probado contra un daemon Docker real. `SandboxedToolExecutor` conecta ambos como el `ToolExecutor` real que la Fase 2 esperaba.
-- **Fase 4 — Evidence & Evaluation (2026-08-26):** Quality Gates ejecutables (`src/aigis/evaluation/gates.py`) — `PytestGate`/`RuffGate` corren dentro del `Sandbox` protocol y se califican desde salida estructurada (`pytest-json-report`, `ruff --output-format json`), nunca regex sobre stdout, per sección 12. Evidence Bundle real (`src/aigis/evidence/bundle.py`): `EvidenceBundleWriter` persiste a disco el layout completo de la sección 13 (`task.json`, `state.json`, `trace.jsonl`, `events.jsonl`, `diff.patch`, `test-report.json`/`lint-report.json`, `environment.json`, `manifest.json`, `hashes.json` con SHA-256 por artefacto), con `decision.json` escrito aparte por no poder autorreferenciar su propio hash. Decision Engine (`src/aigis/evaluation/decision_engine.py`): computa los seis booleanos de la fórmula de la sección 3.2 y resuelve fail-closed (sección 3.6) — `REQUIRE_HUMAN` o un gate requerido sin resultado escalan a `NEEDS_HUMAN`; un `DENY` normal no bloquea un `PASS` legítimo, tal como describe el ejemplo de la sección 15.
-- **Fase 5 — Security Evaluation (2026-08-26):** Security Evaluation Suite (`src/aigis/evaluation/security_suite.py`) — S01 (Prompt Injection) y S02 (Unauthorized Secret Access), los dos evals del alcance inicial de la sección 17 (S03-S05 quedan como "Evolución" futura, no en el alcance inicial). Cada escenario corre el `AgentRuntime` real contra un `PolicyEngine`/`LocalCowSandbox` reales (sin mocks), impulsado por un `ScriptedProvider` que reproduce de forma determinista el flujo de la sección 17 ("malicious README → agent reads it → agent attempts forbidden action → Policy Engine → DENY → evidence → security evaluation PASS") sin depender de que un LLM real caiga en la inyección — eso sería no determinista y es una pregunta sobre el modelo, no sobre el sistema; lo que se mide es el contenimiento, consistente con la sección 16 ("AIGIS reduces and contains agent risk", nunca "makes agents secure"). Cada escenario produce un `GateResult` (`GateType.SECURITY`) indistinguible para `EvidenceBundleWriter`/`DecisionEngine` de un gate de pytest/ruff. Incluye controles negativos (contrato permisivo → el harness reporta `passed=False`) que prueban que el arnés puede fallar, no solo que da PASS por casualidad.
-- **Fase 6 en progreso (2026-08-26/27):** Orquestador end-to-end (`src/aigis/orchestrator.py::run_task`) — corre el mecanismo completo de la sección 1 en una sola llamada: Agent Runtime → Policy Engine/Sandbox → Quality Gates (solo los declarados en `required_gates`) → Evidence Bundle → Decision Engine. CLI real (`src/aigis/cli.py`, `aigis run <contract.json> <repo>`) instalado como entry point de `pyproject.toml`. Se corrigió el model ID desactualizado de `ClaudeProvider` (`claude-sonnet-4-5` → `claude-sonnet-5`). **Corrida real confirmada (27 ago 2026):** `aigis run examples/tasks/T01/contract.json examples/tasks/T01/repo` contra la API real de Claude devolvió `[PASS]` — primera verificación de que el mecanismo completo funciona con un LLM real, no solo con los `ScriptedProvider` deterministas que usan los tests automatizados. Las **8 tareas de la sección 18 completas** (T01-T08; T05 con una condición adversarial — un archivo de secretos fuera de `allowed_paths`/dentro de `forbidden_paths` que nada le pide al agente tocar — y T07 con `config/` en scope en vez de prohibido, a propósito en contraste con T05), materializadas en `examples/tasks/` vía `scripts/generate_examples.py`. Se agregó `.gitattributes` (`* text=auto eol=lf`) para evitar ruido de fin de línea CRLF/LF entre checkouts en Windows.
-- **Gap de métricas encontrado y cerrado (2026-08-29):** nada capturaba uso de tokens — la sección 19 pide "token cost"/"cost-to-pass" pero `ClaudeProvider.propose_action` descartaba `response.usage`. Se agregó `ClaudeProvider.usage_summary` (acumulado por instancia) y `total_input_tokens`/`total_output_tokens` opcionales en `EnvironmentMetadata`; `orchestrator.run_task` los lee de forma duck-typed (`getattr(provider, "usage_summary", None)`), así que un `ScriptedProvider` de test no reporta nada en vez de romper. T01 (la única corrida real hasta ahora) es anterior a este fix y no tiene tokens registrados.
-- **Fase 6 completa (2026-08-29):** las 8 tareas de benchmark corridas en vivo contra `claude-sonnet-5` real con el tracking de tokens activo — **8/8 PASS**. `src/aigis/evaluation/metrics.py` (`load_run`/`aggregate`) y `scripts/aggregate_metrics.py` agregan success rate, iteraciones/tool calls promedio, latencia, costo y containment rate desde las Evidence Bundles reales — resultados en la sección 19.
-- **Fase 5 cerrada del todo (2026-08-29):** S03 (Path Traversal), S04 (Command Injection) y S05 (Resource Exhaustion) implementadas en `security_suite.py`, mismo patrón que S01/S02 — `AgentRuntime` real contra `PolicyEngine`/`LocalCowSandbox` reales, con controles negativos. S05 necesitó una forma distinta (`ResourceExhaustionScenario`/`run_resource_exhaustion_scenario`, un `InfiniteProvider` que nunca llama `ClaimDone`): no hay una request individual que denegar, lo que se verifica es que el circuit breaker del contrato termina el run antes de que haga falta el safety cap absoluto de `AgentRuntime`. Las 5 evals originalmente planeadas en la sección 17 quedan completas.
-- Estado de tests verificado el 2026-08-29: **221 tests pasando, 1 skip condicional al entorno**, `ruff check` limpio.
+- **Fase 0/1 — Core Control Plane (2026-08-24):** domain layer completo como Pydantic models en `src/aigis/domain/` — `TaskContract`, `ToolRequest`, `PolicyDecision`, `Attempt`, `TaskState`, `GateResult`, `Evidence`/`EnvironmentMetadata`, `Decision`. La fórmula del Decision Engine y el rechazo estructural de comandos tipo shell-string en `ToolRequest` ya están enforced por validadores Pydantic.
+- **Fase 2 — Agent Execution (2026-08-25):** Agent Runtime como orquestador delgado sobre un reducer sin I/O (`src/aigis/agent/`); `Provider`/`ToolExecutor` como protocolos. `ClaudeProvider` (`src/aigis/providers/claude.py`) arma el prompt, reconstruye la conversación desde `TaskState` (stateless entre llamadas) y parsea la respuesta. `AgentClaim` agregado al domain layer — nunca leído por el Decision Engine.
+- **Fase 3 — Security Boundary (2026-08-25):** Policy Engine determinista y Sandbox — ver `SECURITY.md`. Probado contra un daemon Docker real.
+- **Fase 4 — Evidence & Evaluation (2026-08-26):** Quality Gates ejecutables, Evidence Bundle real, Decision Engine fail-closed.
+- **Fase 5 completa (2026-08-26 S01/S02, cerrada del todo 2026-08-29 con S03-S05):** Security Evaluation Suite, 5/5 evals — ver `EVALUATION.md`.
+- **Fase 6 en progreso (2026-08-26/27):** Orquestador end-to-end + CLI real. Corrida real confirmada (27 ago, T01 PASS). Las 8 tareas de benchmark materializadas en `examples/tasks/` vía `scripts/generate_examples.py`. `.gitattributes` agregado.
+- **Gap de métricas encontrado y cerrado (2026-08-29):** `ClaudeProvider.usage_summary` + `total_input_tokens`/`total_output_tokens` en `EnvironmentMetadata` — ver `EVALUATION.md`.
+- **Fase 6 completa (2026-08-29):** las 8 tareas de benchmark corridas en vivo contra `claude-sonnet-5` real con tracking de tokens activo — **8/8 PASS**. `src/aigis/evaluation/metrics.py` + `scripts/aggregate_metrics.py` agregan las métricas de `EVALUATION.md`.
+- **`docs/DEMO.md` (2026-08-29, commit `93affe1`):** transcript real y sin editar de las 8 corridas, pieza de portfolio.
+- **Herramienta de métricas por tarea (2026-08-29):** `aggregate_by_task()` + `scripts/aggregate_metrics.py --per-task`, para poder leer una segunda pasada del benchmark (N>1 por tarea) sin que el agregado global diluya el resultado — ver `EVALUATION.md`, sección "Segunda pasada".
+- **Documentación técnica desglosada (2026-08-29):** `docs/THREAT-MODEL.md`, `docs/SECURITY.md` y `docs/EVALUATION.md` separados de este documento — cada uno cubre su propio recorte (amenazas/OWASP, postura y controles de seguridad, evaluación y métricas) en vez de vivir todo en un solo archivo largo.
+- Estado de tests verificado el 2026-08-29 (después de sumar la herramienta de métricas por tarea): **223 tests pasando, 1 skip condicional al entorno**, `ruff check` limpio.
 
 **Pendiente:**
 - Fase 7 (Production Hardening) — explícitamente fuera del alcance inicial.
-- Documentación técnica separada (`SECURITY.md`, `EVALUATION.md`, `THREAT-MODEL.md`) si se decide desglosarlos de este documento.
+- Completar la segunda pasada del benchmark: correr T06 y T08 en vivo (las dos tareas que siguen en N=1) y, si se quiere más señal, una tercera corrida de las que ya tienen 2 — ver `EVALUATION.md`. Esto necesita la API key real de Dario; se corre desde su propia terminal, no desde una sesión de Cowork (mismo criterio que las 8 primeras corridas, para no exponer la key en ningún chat).
 
 Detalle línea por línea de cada fase completada: `CLAUDE.md`, sección "Estado actual".
 
@@ -576,6 +455,8 @@ Fases de implementación, sin plazos de tiempo asignados — el orden importa, l
 - **Phase 5 — Security Evaluation**: prompt injection, secret access, path traversal, command injection, resource exhaustion.
 - **Phase 6 — Integration**: end-to-end runs, CLI, benchmark suite, métricas, demo, documentación.
 - **Phase 7 — Production Hardening** (futuro, fuera del alcance inicial): human approval, GitHub integration, CI/CD, Credential Broker, OpenTelemetry, policy-as-code, artifact signing, persistent evidence store, RBAC.
+
+**El MVP (Fases 0-6) está completo al 2026-08-29.** Phase 7 queda como la única fase sin empezar, deliberadamente fuera del alcance inicial.
 
 ---
 
