@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from aigis.domain import EnvironmentMetadata, Evidence, GateResult, GateType
 
 
@@ -47,3 +50,34 @@ def test_gate_lookup_by_name() -> None:
     )
     assert evidence.gate("pytest").passed is True
     assert evidence.gate("ruff") is None
+
+
+# --- EnvironmentMetadata token usage (section 19: "token cost", "cost-to-pass") --
+
+
+def test_environment_metadata_token_fields_default_to_none() -> None:
+    environment = EnvironmentMetadata(run_id="r1", model_provider="n/a", model="scripted")
+
+    assert environment.total_input_tokens is None
+    assert environment.total_output_tokens is None
+
+
+def test_environment_metadata_accepts_real_token_counts() -> None:
+    environment = EnvironmentMetadata(
+        run_id="r1",
+        model_provider="anthropic",
+        model="claude-sonnet-5",
+        total_input_tokens=1200,
+        total_output_tokens=340,
+    )
+
+    assert environment.total_input_tokens == 1200
+    assert environment.total_output_tokens == 340
+
+
+def test_environment_metadata_rejects_negative_token_counts() -> None:
+    with pytest.raises(ValidationError):
+        EnvironmentMetadata(
+            run_id="r1", model_provider="anthropic", model="claude-sonnet-5",
+            total_input_tokens=-1,
+        )

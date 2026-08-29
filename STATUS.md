@@ -1,6 +1,6 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 27 ago 2026 (noche)_
+_Última actualización: 29 ago 2026_
 
 Este documento resume el estado real de arquitectura, código y repo para que cualquier sesión o IA (Cowork, Claude Code, ChatGPT, Gemini, o vos) arranque con contexto completo sin tener que re-derivarlo. Subilo al knowledge del Project "Aigis Control Plane" en claude.ai o pegalo directo en el chat de otra IA para consulta cruzada. Para el detalle técnico completo de cada pieza, `docs/ARCHITECTURE.md`; para el historial fase por fase, `CLAUDE.md`.
 
@@ -19,10 +19,10 @@ Primer caso de uso: un coding agent. La arquitectura no está atada a ese caso �
 | 3 | Policy Engine determinista (ALLOW/DENY/REQUIRE_HUMAN) + Sandbox (LocalCowSandbox + DockerSandbox real, verificado contra un daemon Docker) | ✅ completa |
 | 4 | Quality Gates ejecutables (pytest/ruff, salida estructurada) + Evidence Bundle real (hashes SHA-256) + Decision Engine fail-closed | ✅ completa |
 | 5 | Security Evaluation Suite — S01 Prompt Injection, S02 Unauthorized Secret Access | ✅ completa (S03-S05 quedan diferidas, no rechazadas — ver Pendiente) |
-| 6 | Orquestador end-to-end (`run_task`) + CLI real (`aigis run`) + 8/8 tareas de benchmark materializadas (T01-T08), 1/8 corrida en vivo (T01, PASS) | 🟡 en progreso |
+| 6 | Orquestador end-to-end (`run_task`) + CLI real (`aigis run`) + 8/8 tareas de benchmark materializadas (T01-T08), 1/8 corrida en vivo (T01, PASS) + tracking de tokens/costo listo para la próxima corrida | 🟡 en progreso |
 | 7 | Production Hardening (human approval, GitHub write access, CI/CD, Credential Broker, RBAC) | fuera del alcance inicial |
 
-**196 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio.**
+**204 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio.**
 
 ## Hito reciente: primera corrida real contra Claude
 
@@ -59,20 +59,22 @@ Se agregó la sección **16.1 "Mapeo a OWASP Top 10 for Agentic Applications (20
 
 ## Repo GitHub `cd-aguilar/aigis-control-plane`
 
-- **Verificado directamente contra la API de GitHub el 27 ago 2026** (no solo con `git log` local, y descartando un falso "repo vacío" que dio un fetch no autenticado de la página HTML): repo **público**, rama por defecto `main`.
-- **⚠️ 3 commits locales sin pushear a `origin/main` al cierre de esta sesión**: `6dfdc0f`, `db8eaff`, `0457894` (ver detalle en cada uno más arriba). El bridge de esta sesión de Cowork (`device_bash`, VM Linux montada sobre la carpeta de Windows) **no tiene credenciales de git para GitHub** — `git push` falla con `fatal: could not read Username for 'https://github.com': No such device or address`. **Este push tiene que hacerse desde un entorno con credenciales reales: Claude Code corriendo nativo en la máquina de Dario, o `git push origin main` manual.**
+- **Push pendiente resuelto (29 ago 2026, desde Claude Code nativo):** los 4 commits que habían quedado bloqueados en Cowork (`6dfdc0f`, `db8eaff`, `0457894`, `885b779`) ya están en `origin/main`. Repo público, rama por defecto `main`, remoto al día.
 - Se revisó el historial completo de commits buscando claves reales expuestas (`sk-ant-...`, valores de `ANTHROPIC_API_KEY`) — no aparece ninguna. El fixture señuelo de la Fase 5 ya no tiene forma de clave real (ver arriba).
 - Sin PRs abiertos, sin ramas obsoletas — todo el trabajo se commitea directo a `main` fase por fase.
-- Documentación al día localmente (pendiente de push): `README.md`, `docs/ARCHITECTURE.md` (spec completa + nueva sección 16.1), `CLAUDE.md` (historial fase por fase + revisión externa), `STATUS.md` (este documento).
+- Documentación al día y pusheada: `README.md`, `docs/ARCHITECTURE.md` (spec completa + sección 16.1), `CLAUDE.md` (historial fase por fase + revisión externa), `STATUS.md` (este documento).
 - `examples/tasks/` — 8/8 tareas de benchmark materializadas y listas para correr con una API key real (`examples/tasks/README.md` tiene las instrucciones). Solo T01 corrida en vivo.
+
+## Gap encontrado y cerrado: métricas de costo (29 ago 2026)
+
+Antes de gastar más tokens corriendo T02-T08, se detectó que nada capturaba uso de tokens: `ClaudeProvider.propose_action` descartaba `response.usage` de cada llamada, así que "token cost"/"cost-to-pass" (sección 19) iban a quedar vacíos sin importar cuántas tareas se corrieran. Se agregó `ClaudeProvider.usage_summary` (acumulado por instancia) y dos campos opcionales (`total_input_tokens`/`total_output_tokens`) a `EnvironmentMetadata`; `orchestrator.run_task` los lee de forma duck-typed (`getattr(provider, "usage_summary", None)`), así que un `ScriptedProvider` de test simplemente no reporta nada en vez de romper. Probado con un cliente Anthropic stubbeado, sin red — 8 tests nuevos, 204 verdes en total. **T01 (la única corrida real) es anterior a este fix y no tiene tokens registrados** — para tener datos de costo hace falta volver a correrla o aceptar que T01 queda sin ese dato.
 
 ## Pendiente
 
-1. **Pushear los 3 commits locales** (`6dfdc0f`, `db8eaff`, `0457894`) a `origin/main` — bloqueado desde Cowork, requiere Claude Code nativo o push manual. **Primer paso obligatorio antes de seguir trabajando desde cualquier sesión, para no divergir del remoto.**
-2. Fase 6: correr T02-T08 en vivo contra la API real (T01 ya confirmado con PASS), agregación de métricas (sección 19 de `ARCHITECTURE.md` — success rate, iteraciones promedio, tool calls promedio, latencia, costo, cost-to-pass, violaciones de policy; requiere varias corridas reales para tener datos que agregar).
-3. Fase 5: decidir timing de S03 (path traversal), S04 (command injection), S05 (resource exhaustion) — diferidas, no rechazadas; ya cubiertas indirectamente por los tests de Policy Engine/Sandbox de la Fase 3.
-4. Fase 7 (Production Hardening): explícitamente fuera del alcance inicial — no adelantar (rechazado en la revisión externa del 27/8, ver arriba).
-5. Documentación técnica separada (`SECURITY.md`, `EVALUATION.md`, `THREAT-MODEL.md`) si se decide desglosarla de `ARCHITECTURE.md` — la sección 16.1 nueva es candidata natural para sembrar `THREAT-MODEL.md`. Parte del Día 7 del plan original, todavía no decidido.
+1. Fase 6: correr T01-T08 en vivo contra la API real con el tracking de tokens ya activo (T01 solo tiene el `[PASS]` registrado, no tokens), agregación de métricas (sección 19 de `ARCHITECTURE.md` — success rate, iteraciones promedio, tool calls promedio, latencia, costo, cost-to-pass, violaciones de policy; requiere varias corridas reales para tener datos que agregar).
+2. Fase 5: decidir timing de S03 (path traversal), S04 (command injection), S05 (resource exhaustion) — diferidas, no rechazadas; ya cubiertas indirectamente por los tests de Policy Engine/Sandbox de la Fase 3.
+3. Fase 7 (Production Hardening): explícitamente fuera del alcance inicial — no adelantar (rechazado en la revisión externa del 27/8, ver arriba).
+4. Documentación técnica separada (`SECURITY.md`, `EVALUATION.md`, `THREAT-MODEL.md`) si se decide desglosarla de `ARCHITECTURE.md` — la sección 16.1 nueva es candidata natural para sembrar `THREAT-MODEL.md`. Parte del Día 7 del plan original, todavía no decidido.
 
 ### Incidente de seguridad (27 ago 2026)
 

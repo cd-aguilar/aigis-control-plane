@@ -71,12 +71,20 @@ def run_task(
     finally:
         sandbox.destroy()
 
+    # Duck-typed and optional on purpose: only ClaudeProvider (so far) meters
+    # itself this way. A ScriptedProvider (Security Suite, orchestrator's
+    # own tests) has no tokens to report, and run_task must not assume every
+    # Provider implementation talks to a billed API.
+    usage = getattr(provider, "usage_summary", None)
+
     writer = EvidenceBundleWriter(base_dir=evidence_base_dir)
     environment = EnvironmentMetadata(
         run_id=run_id,
         model_provider=model_provider,
         model=model,
         task_contract_version=contract.contract_version,
+        total_input_tokens=usage["input_tokens"] if usage else None,
+        total_output_tokens=usage["output_tokens"] if usage else None,
     )
     evidence = writer.write(
         run_id=run_id,

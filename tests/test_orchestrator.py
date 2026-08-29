@@ -72,6 +72,45 @@ def test_run_task_only_runs_required_gates(tmp_path: Path) -> None:
     assert decision.final == FinalDecision.PASS
 
 
+class _MeteredScriptedProvider(ScriptedProvider):
+    """A ScriptedProvider that also exposes usage_summary, standing in for
+    a real ClaudeProvider -- proves run_task actually reads it, without
+    needing a live API call to do so.
+    """
+
+    def __init__(self, actions, *, input_tokens: int, output_tokens: int) -> None:
+        super().__init__(actions)
+        self.usage_summary = {"input_tokens": input_tokens, "output_tokens": output_tokens}
+
+
+def test_run_task_records_token_usage_when_the_provider_reports_it(tmp_path: Path) -> None:
+    task = fix_failing_test_task()
+    materialize(task, tmp_path)
+    provider = _MeteredScriptedProvider(
+        [_FIX_CALCULATOR, ClaimDone(message="Fixed.")], input_tokens=500, output_tokens=150
+    )
+
+    _, _, evidence = run_task(
+        task.contract, tmp_path, provider, evidence_base_dir=tmp_path / "evidence"
+    )
+
+    assert evidence.environment.total_input_tokens == 500
+    assert evidence.environment.total_output_tokens == 150
+
+
+def test_run_task_leaves_token_usage_none_for_a_plain_scripted_provider(tmp_path: Path) -> None:
+    task = fix_failing_test_task()
+    materialize(task, tmp_path)
+    provider = ScriptedProvider([_FIX_CALCULATOR, ClaimDone(message="Fixed.")])
+
+    _, _, evidence = run_task(
+        task.contract, tmp_path, provider, evidence_base_dir=tmp_path / "evidence"
+    )
+
+    assert evidence.environment.total_input_tokens is None
+    assert evidence.environment.total_output_tokens is None
+
+
 def test_run_task_denies_attempt_outside_scope(tmp_path: Path) -> None:
     task = fix_failing_test_task()
     materialize(task, tmp_path)

@@ -216,3 +216,76 @@ def test_claude_provider_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> No
 
     with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
         ClaudeProvider()
+
+
+# --- token usage tracking (stubbed client, no network) --------------------------
+
+
+@dataclass
+class _StubUsage:
+    input_tokens: int
+    output_tokens: int
+
+
+@dataclass
+class _StubResponse:
+    content: list
+    usage: _StubUsage
+
+
+class _StubMessages:
+    def __init__(self, response: _StubResponse) -> None:
+        self._response = response
+
+    def create(self, **kwargs) -> _StubResponse:
+        return self._response
+
+
+class _StubClient:
+    def __init__(self, response: _StubResponse) -> None:
+        self.messages = _StubMessages(response)
+
+
+def test_claude_provider_starts_with_zero_usage(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    from aigis.providers.claude import ClaudeProvider
+
+    provider = ClaudeProvider()
+
+    assert provider.usage_summary == {"input_tokens": 0, "output_tokens": 0}
+
+
+def test_claude_provider_records_usage_from_the_response(
+    monkeypatch: pytest.MonkeyPatch, contract: TaskContract, fresh_state: TaskState
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    from aigis.providers.claude import ClaudeProvider
+
+    provider = ClaudeProvider()
+    provider._client = _StubClient(
+        _StubResponse(
+            content=[_StubTextBlock(text="done")],
+            usage=_StubUsage(input_tokens=120, output_tokens=40),
+        )
+    )
+
+    provider.propose_action(contract, fresh_state)
+
+    assert provider.usage_summary == {"input_tokens": 120, "output_tokens": 40}
+
+
+def test_claude_provider_accumulates_usage_across_calls(
+    monkeypatch: pytest.MonkeyPatch, contract: TaskContract, fresh_state: TaskState
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    from aigis.providers.claude import ClaudeProvider
+
+    provider = ClaudeProvider()
+    provider._client = _StubClient(
+        _StubResponse(content=[_StubTextBlock(text="done")], usage=_StubUsage(10, 5))
+    )
+
+    provider.propose_action(contract, fresh_state)
+    provider.propose_action(contract, fresh_state)
+
+    assert provider.usage_summary == {"input_tokens": 20, "output_tokens": 10}

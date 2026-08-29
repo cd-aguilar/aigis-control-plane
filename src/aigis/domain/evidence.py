@@ -48,6 +48,13 @@ class EnvironmentMetadata(BaseModel):
     dependency_lock_hash: str | None = None
     host_platform: str | None = None
 
+    # Section 19 metrics ("token cost", "cost-to-pass") need these; None
+    # for a Provider that doesn't expose a `usage_summary` (e.g. the
+    # ScriptedProvider the Security Suite and orchestrator tests use, which
+    # never calls a real LLM and has no tokens to report).
+    total_input_tokens: int | None = Field(default=None, ge=0)
+    total_output_tokens: int | None = Field(default=None, ge=0)
+
 
 class Evidence(BaseModel):
     """Pointers into ``evidence/<run_id>/`` plus the gate results and

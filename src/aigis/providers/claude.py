@@ -167,6 +167,8 @@ class ClaudeProvider:
         self._client = anthropic.Anthropic(api_key=api_key)
         self._model = model or os.environ.get("AIGIS_CLAUDE_MODEL", _DEFAULT_MODEL)
         self._max_tokens = max_tokens
+        self._total_input_tokens = 0
+        self._total_output_tokens = 0
 
     @property
     def model(self) -> str:
@@ -177,6 +179,23 @@ class ClaudeProvider:
         """
         return self._model
 
+    @property
+    def usage_summary(self) -> dict[str, int]:
+        """Cumulative token usage across every ``propose_action`` call so
+        far. ARCHITECTURE.md section 19 wants "token cost" and
+        "cost-to-pass" as run metrics, but nothing upstream of this class
+        ever sees the Anthropic SDK's response shape to read
+        ``response.usage`` off of it -- this is the one place that can.
+        Bookkeeping only, read by ``orchestrator.run_task`` after the run
+        finishes; it has no bearing on what action gets proposed next, so
+        it doesn't compromise the Provider protocol's "stateless between
+        calls" invariant for decision-making.
+        """
+        return {
+            "input_tokens": self._total_input_tokens,
+            "output_tokens": self._total_output_tokens,
+        }
+
     def propose_action(self, contract: TaskContract, state: TaskState) -> ProviderAction:
         response = self._client.messages.create(
             model=self._model,
@@ -185,4 +204,6 @@ class ClaudeProvider:
             tools=TOOL_SCHEMAS,
             messages=build_messages(state) or [{"role": "user", "content": "Begin."}],
         )
+        self._total_input_tokens += response.usage.input_tokens
+        self._total_output_tokens += response.usage.output_tokens
         return parse_response(response.content)
