@@ -1,6 +1,6 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 29 ago 2026 (docs/DEMO.md agregado — transcript real de las 8 corridas, portfolio-ready)_
+_Última actualización: 29 ago 2026 (ARCHITECTURE.md desglosado en THREAT-MODEL.md/SECURITY.md/EVALUATION.md; metricas por tarea listas para la segunda pasada del benchmark)_
 
 Este documento resume el estado real de arquitectura, código y repo para que cualquier sesión o IA (Cowork, Claude Code, ChatGPT, Gemini, o vos) arranque con contexto completo sin tener que re-derivarlo. Subilo al knowledge del Project "Aigis Control Plane" en claude.ai o pegalo directo en el chat de otra IA para consulta cruzada. Para el detalle técnico completo de cada pieza, `docs/ARCHITECTURE.md`; para el historial fase por fase, `CLAUDE.md`.
 
@@ -22,7 +22,7 @@ Primer caso de uso: un coding agent. La arquitectura no está atada a ese caso �
 | 6 | Orquestador end-to-end (`run_task`) + CLI real (`aigis run`) + las 8 tareas de benchmark (T01-T08) **corridas en vivo contra `claude-sonnet-5` real: 8/8 PASS** + métricas de la sección 19 agregadas desde datos reales | ✅ completa |
 | 7 | Production Hardening (human approval, GitHub write access, CI/CD, Credential Broker, RBAC) | fuera del alcance inicial |
 
-**Alcance inicial del MVP (sección 21 de `ARCHITECTURE.md`) completo — Fases 0-6.** 221 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio.
+**Alcance inicial del MVP (sección 21 de `ARCHITECTURE.md`) completo — Fases 0-6.** 223 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio.
 
 ## Hito: Security Evaluation Suite completa (29 ago 2026)
 
@@ -73,15 +73,23 @@ Se agregó la sección **16.1 "Mapeo a OWASP Top 10 for Agentic Applications (20
 
 ## Repo GitHub `cd-aguilar/aigis-control-plane`
 
-- **Push pendiente resuelto (29 ago 2026, desde Claude Code nativo):** los 4 commits que habían quedado bloqueados en Cowork (`6dfdc0f`, `db8eaff`, `0457894`, `885b779`) ya están en `origin/main`. Repo público, rama por defecto `main`, remoto al día.
+- **Push del 28/8 resuelto (desde Claude Code nativo):** los 4 commits que habían quedado bloqueados en Cowork (`6dfdc0f`, `db8eaff`, `0457894`, `885b779`) llegaron a `origin/main`. Repo público, rama por defecto `main`.
+- **⚠️ 2 commits nuevos sin pushear (29 ago, hechos en esta sesión de Cowork):** `0a82555` (métricas por tarea) y `6bb3d82` (desglose de documentación). Mismo bloqueo estructural que antes — esta sesión no tiene credenciales git para GitHub (`fatal: could not read Username for 'https://github.com'`). Necesitan un `git push origin main` desde Claude Code nativo o manual antes de seguir trabajando, para no divergir del remoto.
 - Se revisó el historial completo de commits buscando claves reales expuestas (`sk-ant-...`, valores de `ANTHROPIC_API_KEY`) — no aparece ninguna. El fixture señuelo de la Fase 5 ya no tiene forma de clave real (ver arriba).
 - Sin PRs abiertos, sin ramas obsoletas — todo el trabajo se commitea directo a `main` fase por fase.
-- Documentación al día y pusheada: `README.md`, `docs/ARCHITECTURE.md` (spec completa + sección 16.1), `docs/DEMO.md` (transcript real sin editar de las 8 corridas + tabla de métricas, ver hito abajo), `CLAUDE.md` (historial fase por fase + revisión externa), `STATUS.md` (este documento).
+- Documentación al día localmente, pendiente de push (ver arriba): `README.md`, `docs/ARCHITECTURE.md` (spec, ahora con pointers a los tres documentos desglosados), `docs/THREAT-MODEL.md`, `docs/SECURITY.md`, `docs/EVALUATION.md`, `docs/DEMO.md` (transcript real sin editar de las 8 corridas + tabla de métricas), `CLAUDE.md` (historial fase por fase + revisión externa), `STATUS.md` (este documento).
 - `examples/tasks/` — 8/8 tareas de benchmark materializadas y **corridas en vivo, 8/8 PASS** (`examples/tasks/README.md` tiene las instrucciones para repetirlo).
 
 ## Hito: docs/DEMO.md — pieza de portfolio mostrable (29 ago 2026, commit `93affe1`)
 
 Se armó `docs/DEMO.md` con el transcript real y sin editar de `aigis run` contra la API real de Claude para las 8 tareas de benchmark (no un transcript simulado ni reconstruido), más la tabla de métricas agregadas de la sección 19, todo en una sola pieza consultable sin tener que reconstruirla desde `ARCHITECTURE.md`. `README.md` la enlaza junto a `ARCHITECTURE.md`. Esto resuelve parte del punto 4 de "Pendiente" (pulir el portfolio con una demo real).
+
+## Hito: documentación desglosada + métricas por tarea (29 ago 2026, commits `0a82555` y `6bb3d82`)
+
+Dos piezas del punto "Pendiente" de más abajo, resueltas en la misma sesión:
+
+- **`aggregate_by_task()`** en `src/aigis/evaluation/metrics.py` + `scripts/aggregate_metrics.py --all --per-task`: `aggregate()` mezclaba todas las tareas en una sola bolsa y no podía distinguir "T06 es estructuralmente más caro" de "esa corrida fue ruido" — la nueva función agrupa por `task_id` y reporta `output_tokens_spread` (min, max) por tarea. Ya corre contra las Evidence Bundles reales existentes: T01-T05 y T07 ya tienen 2-3 corridas acumuladas (spread visible), T06 y T08 siguen en N=1 — T06 es justamente la tarea que la sección 19 marcaba como posible outlier. 2 tests nuevos (223 verdes en total).
+- **`docs/ARCHITECTURE.md` desglosado en `docs/THREAT-MODEL.md` (Security Model + mapeo OWASP ASI), `docs/SECURITY.md` (postura y controles: principios, Policy Engine, Sandbox, comandos como argv) y `docs/EVALUATION.md`** (Security Evaluation Suite + benchmark funcional + métricas, con una sección nueva "Segunda pasada (N>1 por tarea) — en curso"). `ARCHITECTURE.md` deja un pointer con el mismo número de sección en cada lugar movido — ninguna referencia cruzada existente se rompió. `README.md` y `CLAUDE.md` enlazan los tres documentos nuevos.
 
 ## Gap encontrado y cerrado antes de correr en vivo: métricas de costo (29 ago 2026)
 
@@ -92,8 +100,8 @@ Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada captu
 El alcance inicial del MVP está completo. Lo que queda es explícitamente fuera de ese alcance o discrecional, no bloqueante:
 
 1. Fase 7 (Production Hardening): explícitamente fuera del alcance inicial — no adelantar (rechazado en la revisión externa del 27/8, ver arriba).
-2. Documentación técnica separada (`SECURITY.md`, `EVALUATION.md`, `THREAT-MODEL.md`) si se decide desglosarla de `ARCHITECTURE.md` — la sección 16.1 nueva es candidata natural para sembrar `THREAT-MODEL.md`. Parte del Día 7 del plan original, todavía no decidido.
-3. Opcional: correr T01-T08 una segunda vez para tener más de un dato por tarea — con N=1 por tarea no se puede distinguir varianza normal de algo estructural (ver T06 en la tabla de arriba).
+2. ~~Documentación técnica separada~~ — hecho el 29/8, ver hito arriba.
+3. Completar la segunda pasada del benchmark: correr **T06 y T08 en vivo** (las dos que siguen en N=1; T06 es el outlier de la tabla de métricas) y, si se quiere más señal, una tercera corrida de las que ya tienen 2 (T01-T05, T07). Necesita la API key real de Dario — se corre desde su propia terminal, no desde Cowork, mismo criterio que las 8 corridas originales. Comando: `aigis run examples/tasks/T0N/contract.json examples/tasks/T0N/repo` por tarea, después `python scripts/aggregate_metrics.py --all --per-task` para leer el resultado agrupado por tarea (ya implementado, ver hito arriba).
 4. Decidir hacia dónde sigue el proyecto ahora que el MVP está cerrado: pulir el portfolio (demo real ya armada en `docs/DEMO.md`; falta mostrar resultados en `aigis-cloud`), o mover el foco a otro de los 5 flagships.
 
 ### Incidente de seguridad (27 ago 2026)
