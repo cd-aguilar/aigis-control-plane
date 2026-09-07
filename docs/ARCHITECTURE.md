@@ -414,7 +414,7 @@ No incorporar inicialmente: LangChain, LangGraph, Chroma, Redis, Postgres, Kafka
 
 ## 24. Estado actual
 
-**MVP (Fases 0-6) completo desde el 2026-08-29.** 223 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio.
+**MVP (Fases 0-6) completo desde el 2026-08-29.** 223 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio. Conteo real actual (7 sep 2026, tras Dev Container + Makefile de demo — ver más abajo): **234 tests recolectados (`pytest --collect-only -q`) — 233 verdes, 1 skip condicional al entorno**.
 
 **Completado:**
 - Arquitectura conceptual y tesis del proyecto consolidadas (este documento).
@@ -434,6 +434,7 @@ No incorporar inicialmente: LangChain, LangGraph, Chroma, Redis, Postgres, Kafka
 - **Herramienta de métricas por tarea (2026-08-29):** `aggregate_by_task()` + `scripts/aggregate_metrics.py --per-task`, para poder leer una segunda pasada del benchmark (N>1 por tarea) sin que el agregado global diluya el resultado — ver `EVALUATION.md`, sección "Segunda pasada".
 - **Documentación técnica desglosada (2026-08-29):** `docs/THREAT-MODEL.md`, `docs/SECURITY.md` y `docs/EVALUATION.md` separados de este documento — cada uno cubre su propio recorte (amenazas/OWASP, postura y controles de seguridad, evaluación y métricas) en vez de vivir todo en un solo archivo largo.
 - Estado de tests verificado el 2026-08-29 (después de sumar la herramienta de métricas por tarea): **223 tests pasando, 1 skip condicional al entorno**, `ruff check` limpio.
+- **Dev Container + `make demo` (2026-09-07):** `.devcontainer/` reproducible (Python 3.11 + `docker-in-docker`) y un `Makefile` con la demo de portfolio en un comando (`make demo` = tarea funcional T01 contra la API real + eval de seguridad S01). `scripts/show_last_run.py` y `scripts/run_security_eval.py` nuevos, con tests. 10 tests nuevos — **234 tests recolectados, 233 verdes, 1 skip condicional al entorno**, `ruff check` limpio.
 
 **Pendiente:**
 - Fase 7 (Production Hardening) — explícitamente fuera del alcance inicial.

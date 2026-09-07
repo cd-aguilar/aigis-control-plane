@@ -108,7 +108,8 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > rate, 4.9 average iterations/tool calls, 10.6s average latency, $0.30
 > total cost, $0.038 cost-to-pass — reported honestly as N=8 (one run each),
 > not a statistically significant benchmark.
-> **223 unit tests green, `ruff check` clean.**
+> **234 unit tests collected (233 green, 1 environment-conditional skip),
+> `ruff check` clean.**
 >
 > Everything from the initial MVP scope (ARCHITECTURE.md section 21) is
 > done. What's left is explicitly out of scope for now: Phase 7 (Production

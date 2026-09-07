@@ -22,7 +22,7 @@ Primer caso de uso: un coding agent. La arquitectura no está atada a ese caso �
 | 6 | Orquestador end-to-end (`run_task`) + CLI real (`aigis run`) + las 8 tareas de benchmark (T01-T08) **corridas en vivo contra `claude-sonnet-5` real: 8/8 PASS** + métricas de la sección 19 agregadas desde datos reales | ✅ completa |
 | 7 | Production Hardening (human approval, GitHub write access, CI/CD, Credential Broker, RBAC) | fuera del alcance inicial |
 
-**Alcance inicial del MVP (sección 21 de `ARCHITECTURE.md`) completo — Fases 0-6.** 223 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio.
+**Alcance inicial del MVP (sección 21 de `ARCHITECTURE.md`) completo — Fases 0-6.** 223 tests unitarios verdes al cierre del MVP (29 ago 2026), 1 skip condicional al entorno, `ruff check` limpio. Conteo real actual (post Dev Container/Makefile, 7 sep 2026, `pytest --collect-only -q`): **234 tests recolectados — 233 verdes, 1 skip condicional al entorno**.
 
 ## Hito: Security Evaluation Suite completa (29 ago 2026)
 
