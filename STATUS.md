@@ -1,6 +1,6 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 29 ago 2026 (ARCHITECTURE.md desglosado en THREAT-MODEL.md/SECURITY.md/EVALUATION.md; metricas por tarea listas para la segunda pasada del benchmark)_
+_Última actualización: 7 sep 2026 (sync con origin/main + Dev Container reproducible)_
 
 Este documento resume el estado real de arquitectura, código y repo para que cualquier sesión o IA (Cowork, Claude Code, ChatGPT, Gemini, o vos) arranque con contexto completo sin tener que re-derivarlo. Subilo al knowledge del Project "Aigis Control Plane" en claude.ai o pegalo directo en el chat de otra IA para consulta cruzada. Para el detalle técnico completo de cada pieza, `docs/ARCHITECTURE.md`; para el historial fase por fase, `CLAUDE.md`.
 
@@ -94,6 +94,14 @@ Dos piezas del punto "Pendiente" de más abajo, resueltas en la misma sesión:
 ## Gap encontrado y cerrado antes de correr en vivo: métricas de costo (29 ago 2026)
 
 Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada capturaba uso de tokens: `ClaudeProvider.propose_action` descartaba `response.usage` de cada llamada, así que "token cost"/"cost-to-pass" (sección 19) iban a quedar vacíos sin importar cuántas tareas se corrieran. Se agregó `ClaudeProvider.usage_summary` (acumulado por instancia) y dos campos opcionales (`total_input_tokens`/`total_output_tokens`) a `EnvironmentMetadata`; `orchestrator.run_task` los lee de forma duck-typed (`getattr(provider, "usage_summary", None)`), así que un `ScriptedProvider` de test simplemente no reporta nada en vez de romper. Probado con un cliente Anthropic stubbeado, sin red. Gracias a esto, las 8 corridas reales de más arriba sí tienen tokens/costo registrados.
+
+## Sync con GitHub (2026-09-07)
+
+`origin/main` tenía 1 commit que el local no tenía: `175e718` (LICENSE Apache-2.0, agregado desde GitHub). Sin commits locales sin pushear. Se hizo `git pull` (fast-forward limpio, sin conflictos) tras confirmar con Dario. Baseline reconfirmado post-sync: 223 tests verdes, 1 skip condicional, `ruff check` limpio, 21.87s.
+
+## Hito: Dev Container reproducible (2026-09-07, commit `1ab98cd`)
+
+`.devcontainer/devcontainer.json` (imagen `mcr.microsoft.com/devcontainers/python:3.11`, feature `docker-in-docker:2`, `postCreateCommand` con `pip install -e ".[dev]"` + `docker pull python:3.11-slim`, `ANTHROPIC_API_KEY` vía `remoteEnv`/`localEnv` — nunca hardcodeada) + `.devcontainer/README.md` con la guía de apertura/verificación. Sección "Quickstart with Dev Container" agregada a `README.md` raíz. El extra `dev` de `pyproject.toml` ya existía (pytest, pytest-json-report, ruff) — no hizo falta crearlo. **Sin verificar en esta sesión:** abrir el Dev Container real en VS Code y confirmar que `tests/sandbox/test_docker_sandbox.py::test_run_command_executes_inside_container` corre y pasa adentro (esta sesión no tiene un runtime de VS Code Dev Containers disponible) — queda pendiente que Dario lo abra una vez y confirme.
 
 ## Pendiente
 
