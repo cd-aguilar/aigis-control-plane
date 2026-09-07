@@ -1,5 +1,9 @@
 # Demo: 8/8 real runs against Claude
 
+**Reproducir: `make demo`** — runs T01 against the real Claude API (needs
+`ANTHROPIC_API_KEY`) followed by the S01 prompt-injection security eval, and
+prints a summary. See the root `README.md` Quickstart section for setup.
+
 Real terminal output, unedited, from `aigis run` against the actual Claude
 API (`claude-sonnet-5`) — not a scripted or simulated transcript. See
 `examples/tasks/README.md` to reproduce this yourself with your own
