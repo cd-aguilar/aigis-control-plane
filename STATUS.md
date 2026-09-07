@@ -111,6 +111,12 @@ Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada captu
 
 **Sin verificar en esta sesión:** `make` no está instalado en este host (Windows, Git Bash) — se verificó cada pieza del `Makefile` ejecutando los comandos subyacentes directamente (Python/bash), pero no se corrió `make demo`/`make check` a través del binario `make` en sí. Falta que Dario lo confirme desde su terminal (con `make` instalado, o dentro del Dev Container).
 
+## Hito: higiene de repo (2026-09-07, commit `0b288b2`)
+
+`LICENSE` con el copyright holder completo (`2026 Cesar Dario Aguilar`) — `pyproject.toml` decía `license = "MIT"` mientras el archivo committeado era Apache-2.0, corregido para que coincidan. Discrepancia 221 vs 223 tests resuelta: el número real hoy (`pytest --collect-only -q`) es **234 recolectados, 233 verdes, 1 skip** — README.md/STATUS.md/ARCHITECTURE.md actualizados con el conteo actual, sin reescribir las entradas históricas (223 al cierre del MVP el 29/8 sigue siendo la cifra correcta para ese momento). `CONTRIBUTING.md` agregado (20 líneas: `make check`, convención de commits, regla de test obligatorio para cambios a `policy.yaml`).
+
+**Pendiente para Dario:** actualizar el texto del README del perfil `cd-aguilar/cd-aguilar` (sesión sin acceso a ese repo) — cambiar cualquier mención de "221" o "223 tests" de `aigis-control-plane` por **"234 tests (233 passed, 1 skip)"**.
+
 ## Pendiente
 
 El alcance inicial del MVP está completo. Lo que queda es explícitamente fuera de ese alcance o discrecional, no bloqueante:
