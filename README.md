@@ -116,6 +116,18 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > Broker, RBAC). See `examples/tasks/README.md` to run a benchmark task
 > yourself, or `docs/EVALUATION.md` for the full results table.
 
+## Quickstart with Dev Container
+
+Fastest way to a working environment, Docker sandbox included: open this repo
+in VS Code, run **Dev Containers: Reopen in Container** (needs the
+[Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+and Docker Desktop on the host), and wait for the first build — it installs
+Python 3.11, `docker-in-docker`, and runs `pip install -e ".[dev]"` for you.
+Export `ANTHROPIC_API_KEY` on the host first; the container reads it from
+there, never hardcoded. Then `pytest -q` should be green, `docker info`
+should show a working daemon, and `make demo` runs the one-command portfolio
+demo. See [`.devcontainer/README.md`](.devcontainer/README.md) for details.
+
 ## Repo layout
 
 ```text
