@@ -252,3 +252,115 @@ def test_end_to_end_with_real_sandbox(tmp_path: Path) -> None:
         assert "+    return a + b" in diff
     finally:
         real_sandbox.destroy()
+
+
+# --- P0 bypass regressions: RUN_COMMAND has no path scope at all ----------------
+#
+# PolicyEngine._evaluate_command (policy/engine.py) only checks CMD-002
+# (literal '..' in an arg) and CMD-001 (executable allowlist) -- it never
+# consults contract.allowed_paths/forbidden_paths the way READ_FILE/
+# PATCH_FILE do. LocalCowSandbox.create() copies the *entire* base repo into
+# the ephemeral workdir, so forbidden_paths are physically present there too.
+# Net effect: any allowlisted executable (python, pytest, ...) can read a
+# forbidden file or write outside allowed_paths, and nothing downstream
+# notices. Fixed by commit 4 (observed changed_paths) and commit 5 (exclude
+# forbidden_paths from the sandbox workspace) of the P0 plan -- these two
+# tests pin the bug down at the executor layer so those commits have
+# something concrete to turn green.
+
+_SECRET_MARKER = "sk-live-P0-REGRESSION-SECRET-DO-NOT-LEAK"
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="P0: RUN_COMMAND is never checked against forbidden_paths -- an "
+    "allowlisted executable can read a forbidden file's contents and return "
+    "them as command output, even though READ_FILE on the same path would "
+    "be denied (PATH-002).",
+)
+def test_run_command_cannot_leak_a_forbidden_path(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "app.py").write_text("def main() -> None:\n    pass\n", encoding="utf-8")
+    (repo / "secrets").mkdir(parents=True)
+    (repo / "secrets" / "credentials.txt").write_text(_SECRET_MARKER, encoding="utf-8")
+
+    contract = TaskContract(
+        task_id="T-p0-secret",
+        description="Do something with src/ only.",
+        allowed_paths=["src/"],
+        forbidden_paths=["secrets/"],
+        success_criteria=["forbidden data never leaves the sandbox"],
+        required_gates=["pytest"],
+        max_iterations=5,
+        max_runtime_seconds=60,
+        max_tool_calls=10,
+        max_files_changed=1,
+    )
+    policy_engine = PolicyEngine(contract, PolicyConfig(allowed_commands=[sys.executable]))
+    real_sandbox = LocalCowSandbox(repo)
+    real_sandbox.create()
+    # Pre-seeded straight onto the sandbox filesystem, same rationale as
+    # test_end_to_end_with_real_sandbox above: run_command's args can't
+    # carry a multi-statement script (no ';'/'\n'), so a real agent would
+    # need a PATCH_FILE first -- this skips that equivalent, unrelated step.
+    real_sandbox.write_file(
+        "leak_secret.py",
+        'import pathlib\nprint(pathlib.Path("secrets/credentials.txt").read_text())\n',
+    )
+    executor = SandboxedToolExecutor(policy_engine, real_sandbox)
+
+    try:
+        result = executor.execute(
+            ToolRequest(
+                tool=ToolName.RUN_COMMAND, executable=sys.executable, args=["leak_secret.py"]
+            )
+        )
+        assert _SECRET_MARKER not in (result.output or "")
+    finally:
+        real_sandbox.destroy()
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="P0: a file written by RUN_COMMAND is never reported as a "
+    "changed_path (only PATCH_FILE sets it, in _apply_patch), so "
+    "TaskState.files_changed -- and therefore DecisionEngine's scope_ok -- "
+    "never sees a write that happened outside allowed_paths via run_command.",
+)
+def test_run_command_write_is_reported_as_a_changed_path(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "app.py").write_text("def main() -> None:\n    pass\n", encoding="utf-8")
+
+    contract = TaskContract(
+        task_id="T-p0-untracked-write",
+        description="Do something with src/ only.",
+        allowed_paths=["src/"],
+        success_criteria=["no file outside allowed_paths is modified unnoticed"],
+        required_gates=["pytest"],
+        max_iterations=5,
+        max_runtime_seconds=60,
+        max_tool_calls=10,
+        max_files_changed=1,
+    )
+    policy_engine = PolicyEngine(contract, PolicyConfig(allowed_commands=[sys.executable]))
+    real_sandbox = LocalCowSandbox(repo)
+    real_sandbox.create()
+    real_sandbox.write_file(
+        "write_outside_scope.py",
+        'import pathlib\npathlib.Path("notes.txt").write_text("modified outside scope")\n',
+    )
+    executor = SandboxedToolExecutor(policy_engine, real_sandbox)
+
+    try:
+        result = executor.execute(
+            ToolRequest(
+                tool=ToolName.RUN_COMMAND,
+                executable=sys.executable,
+                args=["write_outside_scope.py"],
+            )
+        )
+        assert result.changed_path is not None
+    finally:
+        real_sandbox.destroy()
