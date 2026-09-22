@@ -1,6 +1,6 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 7 sep 2026 (sync con origin/main + Dev Container reproducible)_
+_Última actualización: 22 sep 2026 (P0 de seguridad abierto — bypass de scope vía `run_command`, ver sección dedicada más abajo; reemplaza la anterior de 7 sep)_
 
 Este documento resume el estado real de arquitectura, código y repo para que cualquier sesión o IA (Cowork, Claude Code, ChatGPT, Gemini, o vos) arranque con contexto completo sin tener que re-derivarlo. Subilo al knowledge del Project "Aigis Control Plane" en claude.ai o pegalo directo en el chat de otra IA para consulta cruzada. Para el detalle técnico completo de cada pieza, `docs/ARCHITECTURE.md`; para el historial fase por fase, `CLAUDE.md`.
 
@@ -117,9 +117,37 @@ Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada captu
 
 **Pendiente para Dario:** actualizar el texto del README del perfil `cd-aguilar/cd-aguilar` (sesión sin acceso a ese repo) — cambiar cualquier mención de "221" o "223 tests" de `aigis-control-plane` por **"234 tests (233 passed, 1 skip)"**.
 
+## P0 en curso: bypass de scope vía `run_command` (22 sep 2026)
+
+**Hallazgo abierto, confirmado contra el código (no contra un documento):** una sesión de Claude Code recibió un brief de P0 que citaba `claude/aigis-control-plane-p0-design-2026-09-22.md` y `claude/aigis-control-plane-security-review-2026-09-22.md` como el diseño completo y el PoC — ninguno de los dos está en el repo. Dario decidió (22/9) seguir igual, reconstruyendo el hallazgo desde `STATUS.md`/`ARCHITECTURE.md`/el código, y preguntando decisión por decisión en vez de esperar los documentos. El hallazgo en sí se confirmó de forma independiente leyendo `policy/engine.py`, `sandbox/local_cow.py`, `domain/task_state.py` y `evaluation/decision_engine.py` — no es una afirmación sin verificar del brief original.
+
+**Mecanismo confirmado:** `PolicyEngine._evaluate_command` (`src/aigis/policy/engine.py`) sólo evalúa CMD-002 (`'..'` literal en algún argumento) y CMD-001 (allowlist de `policy.yaml`) — nunca consulta `allowed_paths`/`forbidden_paths` del contrato, a diferencia de `READ_FILE`/`PATCH_FILE`. `LocalCowSandbox.create()` copia el repo base entero al workspace efímero, así que un `forbidden_path` sigue físicamente presente y legible por cualquier ejecutable de la allowlist (`python`, `pytest`, ...). Además, `TaskState.files_changed` sólo se llena vía `changed_path`, que sólo `PATCH_FILE` (`policy/executor.py::_apply_patch`) setea — una escritura hecha con `run_command` (incluyendo reescribir un test que `PytestGate` va a evaluar después) es invisible para `DecisionEngine.scope_ok`. Resultado end a end: un agente puede leer un secreto prohibido, reescribir el test que falla para forzar un PASS, y la `Decision` final da `PASS` igual — confirmado con un PoC reproducible (ver abajo).
+
+**Principio del fix (Dario, 22/9):** la decisión sólo puede depender de datos que el agente no puede escribir.
+
+**Checklist de aceptación (reconstruido — el §8 original del P0 con los 9 criterios no está disponible; esto es un stand-in explícito hasta que Dario lo pase):**
+
+- [x] Regresión reproducible que confirme el bypass, como test automatizado (no sólo como narrativa) — `xfail(strict=True)`, para que cada commit de fix retire el suyo.
+- [ ] `RUN_COMMAND` deja de poder leer contenido de un `forbidden_path`.
+- [ ] Una escritura hecha vía `run_command` fuera de `allowed_paths` queda registrada (visible para `scope_ok`), no sólo las hechas vía `PATCH_FILE`.
+- [ ] Los Quality Gates (`pytest`/`ruff`) corren contra un workspace que el propio agente no pudo alterar sin que quede registrado — no el mismo workspace de ejecución sin verificar.
+- [ ] Un error de infraestructura durante la evaluación no puede degradar silenciosamente a PASS/ALLOW (fail-closed → `NEEDS_HUMAN`).
+- [ ] `run_command` deja de aceptar un `executable`/`args` arbitrarios dentro de la allowlist — reemplazado por perfiles (`run_tests`/`run_lint`) sin argumentos libres (D1).
+- [ ] Imagen de sandbox hardened, pinneada por digest, Docker como default (D5).
+- [ ] `deny_escalation=security` por defecto: un DENY sobre PATH-002 o una ruta sensible con gates en verde → `NEEDS_HUMAN`, no `PASS` (D6).
+- [ ] `docs/SECURITY.md`/`THREAT-MODEL.md`/README recortan cualquier afirmación no verificada ("unique", "tamper-proof", "production-ready") mientras el P0 sigue abierto.
+
+**Commit 1 — test(security): add failing regressions for P0 bypass (xfail strict)**
+Hash: `9b19879`. 3 tests nuevos (2 en `tests/policy/test_executor.py`, 1 en `tests/test_p0_command_bypass.py` nuevo) que reproducen, contra un `LocalCowSandbox`/`SandboxedToolExecutor`/`run_task` reales (sin mocks): lectura de un `forbidden_path` vía `run_command`, escritura fuera de `allowed_paths` vía `run_command` no registrada en `changed_path`, y el PoC combinado (fuga de secreto + test reescrito) terminando en `Decision.final == PASS`. Los tres quedan `xfail(strict=True)` — cualquiera que empiece a pasar sin que el commit correspondiente retire su marcador rompe la suite a propósito. Tests: 233 passed, 3 xfailed, 1 skip | ruff: clean | CI: n.a. (todavía no existe, ver commit 3 del plan).
+
+**Pendiente de Dario:**
+- Los dos documentos citados en el brief del P0 (`claude/aigis-control-plane-p0-design-2026-09-22.md`, `claude/aigis-control-plane-security-review-2026-09-22.md`) — si existen en otro lado, pasarlos; si no, el checklist de arriba sigue siendo el reconstruido, no el original.
+- La salida del `grep` sobre los bundles locales (P0 §5) antes del commit 7 (`D1`, reemplazar `run_command` por `run_tests`/`run_lint`).
+- Confirmación de que las credenciales expuestas el 27/8 (ver "Incidente de seguridad" más abajo) efectivamente se rotaron — seguía sin confirmar a la fecha de la última actualización de este documento antes de hoy.
+
 ## Pendiente
 
-El alcance inicial del MVP está completo. Lo que queda es explícitamente fuera de ese alcance o discrecional, no bloqueante:
+El alcance inicial del MVP está completo salvo el P0 de seguridad abierto arriba, que pasa a ser bloqueante para cualquier otra cosa. Lo que sigue es lo que quedaba pendiente antes del P0 — explícitamente fuera de ese alcance o discrecional, no bloqueante:
 
 1. Fase 7 (Production Hardening): explícitamente fuera del alcance inicial — no adelantar (rechazado en la revisión externa del 27/8, ver arriba).
 2. ~~Documentación técnica separada~~ — hecho el 29/8, ver hito arriba.
