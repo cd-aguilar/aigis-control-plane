@@ -56,14 +56,17 @@ TaskContract → Agent → ToolRequest → Policy Engine → Sandbox → Executi
 - **Policy Engine** — deterministic, external to the LLM. Fail-closed: a task
   with `risk_level: CRITICAL` denies everything, `HIGH` requires a human,
   before any path/command rule is even consulted.
-- **Sandbox** — an ephemeral, isolated copy of the repo (copy-on-write locally,
-  or a network-disabled, non-root, read-only-root Docker container) is where
-  an ALLOWed request actually runs. A DENY never touches it.
+- **Sandbox** — an ephemeral copy of the repo is where an ALLOWed request
+  actually runs; a DENY never touches it. Two modes: a local copy-on-write
+  directory (**the current default**, which does *not* isolate the host
+  filesystem or the network for executed code) or, with `--sandbox docker`,
+  a non-root, read-only-root container with no network (`--network none`).
 - **Quality Gates** — `pytest`/`ruff` run *inside* the sandbox and are graded
   from their own structured JSON output, never from regex over stdout.
 - **Evidence Bundle** — every run persists to `evidence/<run-id>/`: diff,
   structured test/lint reports, policy decisions, environment metadata, and a
-  SHA-256 hash of every artifact for integrity.
+  SHA-256 checksum of every artifact (detects accidental corruption only:
+  unsigned and stored next to the artifacts, so not tamper-evidence).
 - **Decision Engine** — computes `contract_valid ∧ policy_ok ∧ tests_pass ∧
   lint_pass ∧ scope_ok ∧ resource_limits_ok ⇒ PASS`. A blocked action
   (`DENY`) doesn't fail the run by itself — the control worked as intended.
@@ -80,6 +83,38 @@ Security evals, benchmark suite, and metrics:
 Real terminal output from 8/8 tasks run against the actual Claude API,
 plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 
+## Known limitations
+
+> **Open P0 security finding (since 2026-09-22).** With the default policy, a
+> `run_command` using an allowlisted executable (`python`) can read
+> `forbidden_paths`, write outside `allowed_paths` without it being recorded,
+> and rewrite the tests the gate later grades — and the run still ends in
+> `PASS`. Until the fix lands, AIGIS **cannot claim** to prevent secret
+> access, to restrict the scope of changes, or to verify a task independently
+> of the agent. Findings: [`docs/security/P0-review.md`](docs/security/P0-review.md).
+> Fix design and closing criteria: [`docs/security/P0-design.md`](docs/security/P0-design.md).
+> Failing regressions (xfail strict): `tests/test_p0_regressions.py`.
+
+- **The default sandbox is not isolated.** `aigis run` uses the local
+  copy-on-write sandbox unless you pass `--sandbox docker`; in local mode,
+  executed code sees the host filesystem and has network access. "No
+  network" holds in docker mode only.
+- **Docker mode is verified on Docker Desktop (Windows) only.** It lacks
+  `--cap-drop ALL`/`no-new-privileges`, the image is not pinned by digest and
+  has no `pytest`/`ruff`, and Linux-native file permissions were never
+  tested (known UID issue).
+- **Gates grade agent-writable inputs.** Tests, pytest/ruff config,
+  `conftest.py` and the pytest report all live in the agent's workspace.
+- **Scope is computed from the agent's tool log**, not from the filesystem:
+  `scope_ok` and `max_files_changed` only see `patch_file` edits.
+- **Evidence checksums are not tamper-evidence.** `hashes.json` is unsigned;
+  signed receipts are planned, not built.
+- **The 8/8 benchmark is a pre-fix baseline** (local sandbox, N=1-3 per
+  task). It shows the mechanism runs end to end with a real LLM. It is not
+  evidence that the controls contain an adversarial agent.
+- **No conformance claims.** The OWASP ASI and AARM mappings in
+  [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md) are informal gap analyses.
+
 ## Status
 
 > Phases 0–6 done (initial MVP scope complete). Domain layer (`TaskContract`, `ToolRequest`,
@@ -88,9 +123,9 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > enforced structurally, not just documented. Agent Runtime (reducer +
 > provider protocol) with a real `ClaudeProvider` adapter. Policy Engine
 > (deterministic ALLOW/DENY/REQUIRE_HUMAN) in front of a real Sandbox
-> (`LocalCowSandbox` + a `DockerSandbox` verified end-to-end against an
-> actual Docker daemon: no network, non-root, read-only + tmpfs, resource
-> caps). Executable Quality Gates (`pytest`/`ruff` inside the sandbox, graded
+> (`LocalCowSandbox`, the default, plus a `DockerSandbox` — no network,
+> non-root, read-only + tmpfs, resource caps — verified against a real Docker
+> daemon on Docker Desktop/Windows; see Known limitations). Executable Quality Gates (`pytest`/`ruff` inside the sandbox, graded
 > from structured JSON), a real Evidence Bundle writer, and a fail-closed
 > Decision Engine. A Security Evaluation Suite — all 5 originally-planned
 > evals (S01 Prompt Injection, S02 Unauthorized Secret Access, S03 Path
@@ -104,19 +139,21 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > it. **All 8 functional benchmark tasks from section 18 (T01-T08) have run
 > live against the real Claude API (`claude-sonnet-5`): 8/8 PASS** — T05
 > with an adversarial decoy file outside scope, T07 with `config/`
-> deliberately in scope instead of forbidden (contrast with T05).
+> deliberately in scope instead of forbidden (contrast with T05). These
+> are a **pre-fix baseline** (see Known limitations).
 > `aigis.evaluation.metrics` + `scripts/aggregate_metrics.py` turn those
 > real Evidence Bundles into the metrics section 19 asks for: 100% success
 > rate, 4.9 average iterations/tool calls, 10.6s average latency, $0.30
 > total cost, $0.038 cost-to-pass — reported honestly as N=8 (one run each),
 > not a statistically significant benchmark.
-> **234 unit tests collected (233 green, 1 environment-conditional skip),
-> `ruff check` clean.**
+> **290 tests collected (Linux: 242 passed, 47 xfailed P0 regressions,
+> 1 skipped), `ruff check` clean.** A minimal CI workflow (pytest + ruff on
+> push/PR to `main`) is defined in `.github/workflows/ci.yml`.
 >
-> Everything from the initial MVP scope (ARCHITECTURE.md section 21) is
-> done. What's left is explicitly out of scope for now: Phase 7 (Production
-> Hardening — human approval, GitHub write access, CI/CD, a real Credential
-> Broker, RBAC). See `examples/tasks/README.md` to run a benchmark task
+> The initial MVP scope (ARCHITECTURE.md section 21) was completed on
+> 2026-08-29; the open P0 above now blocks everything else. Still out of
+> scope: Phase 7 (Production Hardening — human approval, GitHub write
+> access, full CI/CD, a real Credential Broker, RBAC). See `examples/tasks/README.md` to run a benchmark task
 > yourself, or `docs/EVALUATION.md` for the full results table.
 
 ## Quickstart with Dev Container

@@ -125,8 +125,8 @@ class LocalCowSandbox:
 
 def _apply_resource_limits() -> None:
     """``preexec_fn`` for POSIX: caps CPU time and address space for the
-    sandboxed subprocess (ARCHITECTURE.md section 16, "resource exhaustion"
-    -> "CPU/memory/PID/time limits"). Runs in the forked child before exec,
+    sandboxed subprocess (THREAT-MODEL.md, "Resource exhaustion"). No PID or
+    process limit here -- see below. Runs in the forked child before exec,
     so a limit here can never affect the parent. Not available on Windows --
     ``run_command`` only wires this in when ``os.name == "posix"``.
 

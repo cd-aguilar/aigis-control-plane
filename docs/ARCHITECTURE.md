@@ -163,7 +163,7 @@ AIGIS se divide conceptualmente en dos planos.
                        ┌────────────────────────┐
                        │        SANDBOX         │
                        │ Docker · non-root      │
-                       │ no network · limits    │
+                       │ no network* · limits   │
                        │ ephemeral filesystem   │
                        └───────────┬────────────┘
                                     ▼
@@ -186,6 +186,8 @@ AIGIS se divide conceptualmente en dos planos.
                   │   PASS / FAIL / NEEDS_HUMAN     │
                   └────────────────────────────────┘
 ```
+
+\* Solo en modo docker (`--sandbox docker`). El default actual es `LocalCowSandbox`, sin aislamiento de red ni de host (sección 11). Mientras el P0 siga abierto, el flujo de este diagrama tiene un desvío: lo que hace un `run_command` permitido no lo ven ni la policy ni la evaluación de scope/tests — ver `docs/security/P0-review.md`.
 
 ---
 
@@ -263,7 +265,9 @@ Esto convierte la autorización en parte de la evidencia. Ver `SECURITY.md` para
 
 ## 11. Sandbox
 
-Ejecución en entorno aislado: Docker, non-root, network disabled, resource limits, ephemeral filesystem, read-only base repository, execution timeout, PID/process limits.
+Ejecución en entorno aislado. En modo docker (`DockerSandbox`): non-root, sin red (`--network none`), resource limits, ephemeral filesystem, read-only base repository, execution timeout, PID/process limits.
+
+_Estado real (8 nov 2026): esa lista describe `DockerSandbox` (`--sandbox docker`), no el default. `aigis run` usa `LocalCowSandbox` por defecto, que tiene filesystem efímero, timeout y límites de CPU/memoria, pero no aísla red ni host y **no tiene límite de PIDs/procesos** (solo `DockerSandbox` lo tiene, vía `--pids-limit`). Docker por defecto es D5 del P0 — ver `docs/security/P0-design.md` y `SECURITY.md`._
 
 El objetivo no es afirmar "Docker hace imposible escapar", sino **reducir el blast radius y contener la ejecución del agente**.
 
@@ -296,7 +300,7 @@ evidence/<run-id>/
     environment.json  hashes.json  decision.json
 ```
 
-`manifest.json` y `hashes.json` permiten verificar la integridad de los artefactos — no se necesita blockchain ni infraestructura distribuida para esto.
+`manifest.json` y `hashes.json` permiten detectar corrupción accidental de los artefactos. **No son tamper-evidence:** son checksums sin clave ni firma, guardados junto a los artefactos y sin cubrir `decision.json`, así que quien pueda modificar el bundle puede recalcularlos. Para tamper-evidence hace falta firmar (receipts firmados, planeado como P3); una cadena de hashes sola tampoco alcanza.
 
 ---
 
@@ -414,7 +418,9 @@ No incorporar inicialmente: LangChain, LangGraph, Chroma, Redis, Postgres, Kafka
 
 ## 24. Estado actual
 
-**MVP (Fases 0-6) completo desde el 2026-08-29.** 223 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio. Conteo real actual (7 sep 2026, tras Dev Container + Makefile de demo — ver más abajo): **234 tests recolectados (`pytest --collect-only -q`) — 233 verdes, 1 skip condicional al entorno**.
+**MVP (Fases 0-6) completo desde el 2026-08-29.** 223 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio. Conteo al 7 sep 2026 (tras Dev Container + Makefile de demo): 234 recolectados — 233 verdes, 1 skip.
+
+**P0 de seguridad abierto (desde el 22 sep 2026):** bypass de scope vía `run_command` que termina en `PASS` — ver `docs/security/P0-review.md` (hallazgos), `docs/security/P0-design.md` (fix D1-D6 y criterios de cierre) y `STATUS.md` (avance commit por commit). Bloquea todo lo demás. Conteo actual (8 nov 2026): **290 tests recolectados** — Linux 242 passed / 47 xfailed (regresiones del P0, `xfail(strict=True)`) / 1 skipped. CI mínima (pytest + ruff) en `.github/workflows/ci.yml` desde el 8/11.
 
 **Completado:**
 - Arquitectura conceptual y tesis del proyecto consolidadas (este documento).
@@ -437,8 +443,9 @@ No incorporar inicialmente: LangChain, LangGraph, Chroma, Redis, Postgres, Kafka
 - **Dev Container + `make demo` (2026-09-07):** `.devcontainer/` reproducible (Python 3.11 + `docker-in-docker`) y un `Makefile` con la demo de portfolio en un comando (`make demo` = tarea funcional T01 contra la API real + eval de seguridad S01). `scripts/show_last_run.py` y `scripts/run_security_eval.py` nuevos, con tests. 10 tests nuevos — **234 tests recolectados, 233 verdes, 1 skip condicional al entorno**, `ruff check` limpio.
 
 **Pendiente:**
-- Fase 7 (Production Hardening) — explícitamente fuera del alcance inicial.
-- Completar la segunda pasada del benchmark: correr T06 y T08 en vivo (las dos tareas que siguen en N=1) y, si se quiere más señal, una tercera corrida de las que ya tienen 2 — ver `EVALUATION.md`. Esto necesita la API key real de Dario; se corre desde su propia terminal, no desde una sesión de Cowork (mismo criterio que las 8 primeras corridas, para no exponer la key en ningún chat).
+- Cerrar el P0 (9 criterios del §8 de `docs/security/P0-design.md`), incluido re-correr el benchmark 8/8 después del fix. Las métricas de la sección 19 quedan como baseline pre-fix (local sandbox, N=1-3).
+- Fase 7 (Production Hardening) — explícitamente fuera del alcance inicial (excepción: la CI mínima, adoptada el 22/9 como parte del P0).
+- ~~Completar la segunda pasada del benchmark~~ — cancelada por Dario el 22/9 (ver `EVALUATION.md`). Texto original: correr T06 y T08 en vivo (las dos tareas que siguen en N=1) y, si se quiere más señal, una tercera corrida de las que ya tienen 2 — ver `EVALUATION.md`. Esto necesita la API key real de Dario; se corre desde su propia terminal, no desde una sesión de Cowork (mismo criterio que las 8 primeras corridas, para no exponer la key en ningún chat).
 
 Detalle línea por línea de cada fase completada: `CLAUDE.md`, sección "Estado actual".
 

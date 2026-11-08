@@ -133,7 +133,7 @@ Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada captu
 - [ ] 4. `scope_ok` y `max_files_changed` se calculan solo desde cambios observados, con un test que prueba que el registro del agente no puede ampliarlos. (D4)
 - [ ] 5. Ningún insumo de un gate (tests protegidos, config, reporte) puede escribirse desde el workspace del agente. (D3)
 - [ ] 6. El default de la CLI es docker con imagen por digest; local solo con un flag explícito, registrado en la evidencia. (D5)
-- [ ] 7. La documentación no contiene afirmaciones no verificadas ("unique", "tamper-proof", "production-ready", "inmutable", "network disabled" sin calificar), verificable con `grep`. (commit 2)
+- [x] 7. La documentación no contiene afirmaciones no verificadas ("unique", "tamper-proof", "production-ready", "inmutable", "network disabled" sin calificar), verificable con `grep`. (commit 2) — ✅ 8 nov 2026: `grep -rniE "\bunique\b|tamper-proof|production-ready|inmutable|immutable|network disabled|no network" README.md docs/*.md` solo devuelve 3 líneas, todas calificadas como "solo en docker". **Re-verificar al cierre del P0**, porque los commits de fix van a tocar estos docs.
 - [ ] 8. El benchmark 8/8 se re-corrió post-fix y se publicaron los resultados, incluidos los fallos. (commit 10, lo corre Dario)
 - [x] 9. Rotación de credenciales confirmada (fuera del repo) — ✅ 8 nov 2026.
 
@@ -170,7 +170,17 @@ Notas: el caso `pytest_ini` del test 10 hoy ya da FAIL (por `tests_pass`, el `--
 Tests: Windows 241 passed, 46 xfailed, 3 skipped; Linux (contenedor) 242 passed, 47 xfailed, 1 skipped | ruff: clean | CI: pendiente del push.
 
 **docs: add P0 brief of 2026-11-08 (8 nov 2026)**
-Hash: se anota en el commit siguiente. `claude/aigis-control-plane-p0-brief-2026-11-08.md` (brief de trabajo del P0 que reemplaza los del 22/9) commiteado a pedido de Dario. El push sigue pendiente por decisión de Dario (8/11): la CI todavía no corrió nunca.
+Hash: `3de0bff`. `claude/aigis-control-plane-p0-brief-2026-11-08.md` (brief de trabajo del P0 que reemplaza los del 22/9) commiteado a pedido de Dario. El push sigue pendiente por decisión de Dario (8/11): la CI todavía no corrió nunca.
+
+**Commit 2 — docs(security): scope down unverified claims (8 nov 2026)**
+Hash: se anota en el commit siguiente. Todo el §7 de `P0-design.md` más la lista del brief del 8/11:
+- `README.md`: sección **Known limitations** (P0 abierto, sandbox por defecto sin aislamiento, docker verificado solo en Docker Desktop/Windows, gates sobre insumos que el agente escribe, scope desde el log del agente, checksums que no son tamper-evidence, 8/8 como baseline pre-fix, sin claims de conformidad). "No network" pasa a "solo en modo docker"; hashes → checksums; conteo de tests actualizado (290 recolectados); el badge de CI ya estaba (`43b1456`).
+- `docs/THREAT-MODEL.md`: columna "Estado real hoy" en la tabla de amenazas, filas nuevas **Out-of-band access via allowed command** y **Grader tampering**, "Evidence tampering" → checksums (solo corrupción accidental, receipts firmados planeados). PID solo en docker. OWASP ASI re-evaluado: **ASI01, ASI02 y ASI05 bajan de ✅ a 🟡** (ninguno queda como cubierto). Sección nueva **AARM — informal gap analysis**, verificada contra el código: R1 🟡, R2 ⬜, R3 🟡, R4 ⬜, R5 ⬜ firma / 🟡 registro, R6 ⬜, R7 ⬜, R8 ⬜, R9 🟡. Fuente de los requisitos: el paper de AARM (arXiv 2602.09433), consultado el 8/11.
+- `docs/SECURITY.md`: aviso del P0, sección **Dos dominios de confianza** (un gate ejecuta código del repo), límite de least privilege (`python` en la allowlist), `LocalCowSandbox` como default sin aislamiento de host/red y con límites POSIX nunca ejercidos en una corrida real, docker verificado solo en Docker Desktop/Windows (+ hallazgo UID), filtro de metacaracteres como defensa en profundidad y no como control real (H11). Se quitan "inmutable" y la lista de campos de `environment.json` que no se completan (quedan en `null` hasta D5).
+- `docs/EVALUATION.md`: alcance real de S01-S05 (tabla qué prueba / qué no), S06-S08 con su estado, benchmark funcional separado del de enforcement, métricas 8/8 rotuladas "baseline pre-fix, local sandbox, N=1-3", segunda pasada marcada como cancelada.
+- `docs/ARCHITECTURE.md`: §5 (diagrama, "no network*" con nota), §11 (la lista de aislamiento es de `DockerSandbox`; PID solo en docker), §13 (hashes no son tamper-evidence), §24 (P0 abierto, conteo, CI mínima, pendientes). §15 no se toca: es de D6 (commit 9).
+- `src/aigis/sandbox/local_cow.py`: el docstring de `_apply_resource_limits` ya no menciona PID (solo cambia el docstring).
+Tests: Windows 241 passed, 46 xfailed, 3 skipped (sin cambios de código) | ruff: clean | CI: pendiente del push.
 
 **Pendiente de Dario:**
 - ~~Los dos documentos del P0~~ — **commiteados el 8 nov 2026** como `docs/security/P0-design.md` (diseño aprobado, tests §4, claims §7, criterios §8) y `docs/security/P0-review.md` (hallazgos H1-H11, clasificación de controles, PoC). El checklist de arriba pasa a reemplazarse por los 9 criterios del §8 en el commit siguiente.
