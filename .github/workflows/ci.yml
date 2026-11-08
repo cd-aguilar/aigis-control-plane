@@ -36,5 +36,10 @@ jobs:
       - name: Lint
         run: ruff check .
 
+      # Pre-pull the DockerSandbox base image so the first container test does
+      # not spend its own 30 s timeout downloading it.
+      - name: Pull sandbox image
+        run: docker pull python:3.11-slim
+
       - name: Test
         run: pytest -q

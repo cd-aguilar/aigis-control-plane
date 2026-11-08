@@ -158,7 +158,10 @@ Hash: `43b1456`. `.github/workflows/ci.yml`: push y PR a `main`, `ubuntu-latest`
 Hash: `73067c9`. `docs/security/P0-design.md` y `docs/security/P0-review.md` agregados tal cual los pasó Dario. Tests: igual que el fix pre-CI | ruff: clean | CI: pendiente del push.
 
 **docs: STATUS.md — criterios §8 del P0 y limpieza (8 nov 2026)**
-Hash: se anota en el commit siguiente. Checklist reconstruido reemplazado por los 9 criterios del §8; P1 anotados; "Commit 2a" renombrado a "Fix fuera de plan (pre-CI)" para que "commit 2" siga siendo el recorte de claims; encabezado, conteo de tests (238 recolectados), nota de CI mínima adoptada el 22/9 y nota de los commits sin pushear del 29/8 (resueltos el 7/9) actualizados. Sin cambios de código.
+Hash: `4e468cb`. Checklist reconstruido reemplazado por los 9 criterios del §8; P1 anotados; "Commit 2a" renombrado a "Fix fuera de plan (pre-CI)" para que "commit 2" siga siendo el recorte de claims; encabezado, conteo de tests (238 recolectados), nota de CI mínima adoptada el 22/9 y nota de los commits sin pushear del 29/8 (resueltos el 7/9) actualizados. Sin cambios de código.
+
+**ci: pre-pull the sandbox image (8 nov 2026)**
+Hash: se anota en el commit siguiente. Paso `docker pull python:3.11-slim` antes de `pytest` en `.github/workflows/ci.yml`, para que `test_run_command_executes_inside_container` no gaste su timeout de 30 s en la descarga (Paso 0 del brief del 8/11). Tests: sin cambios | ruff: clean | CI: pendiente del push.
 
 **Pendiente de Dario:**
 - ~~Los dos documentos del P0~~ — **commiteados el 8 nov 2026** como `docs/security/P0-design.md` (diseño aprobado, tests §4, claims §7, criterios §8) y `docs/security/P0-review.md` (hallazgos H1-H11, clasificación de controles, PoC). El checklist de arriba pasa a reemplazarse por los 9 criterios del §8 en el commit siguiente.
