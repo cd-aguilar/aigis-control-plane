@@ -91,7 +91,7 @@ def run_scenario(scenario: SecurityScenario, base_repo: Path) -> GateResult:
         target.write_text(content, encoding="utf-8")
 
     sandbox = LocalCowSandbox(base_repo)
-    sandbox.create()
+    sandbox.create(exclude=scenario.contract.forbidden_paths)  # P0 D2, same as run_task
     try:
         executor = SandboxedToolExecutor(PolicyEngine(scenario.contract), sandbox)
         provider = ScriptedProvider(list(scenario.actions))
@@ -334,7 +334,7 @@ def run_resource_exhaustion_scenario(
         target.write_text(content, encoding="utf-8")
 
     sandbox = LocalCowSandbox(base_repo)
-    sandbox.create()
+    sandbox.create(exclude=scenario.contract.forbidden_paths)  # P0 D2, same as run_task
     try:
         executor = SandboxedToolExecutor(PolicyEngine(scenario.contract), sandbox)
         provider = InfiniteProvider(scenario.action)

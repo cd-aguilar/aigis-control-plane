@@ -70,6 +70,16 @@ def _matches_prefix(path: str, prefix: str) -> bool:
     return norm_path == norm_prefix or norm_prefix in norm_path.parents
 
 
+def path_matches_prefix(path: str, prefix: str) -> bool:
+    """Public name for the one prefix rule every scope check uses.
+
+    ``LocalCowSandbox.create(exclude=...)`` (P0 D2) calls this so that
+    "this path is forbidden" means exactly the same thing when the sandbox
+    decides what NOT to copy as when the Policy Engine decides what to DENY.
+    """
+    return _matches_prefix(path, prefix)
+
+
 def path_within_scope(path: str, contract: TaskContract) -> bool:
     """True if ``path`` would be ALLOWed by the path-scope rules alone
     (PATH-001..003), independent of the task's ``risk_level``.

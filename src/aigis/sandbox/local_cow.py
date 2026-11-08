@@ -25,9 +25,11 @@ import shutil
 import stat
 import subprocess
 import tempfile
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
+from aigis.policy.engine import path_matches_prefix
 from aigis.sandbox.base import CommandResult
 
 # Environment variables let through to the sandboxed subprocess. Anything
@@ -51,6 +53,10 @@ class LocalCowSandbox:
         if not self.base_repo_path.is_dir():
             raise NotADirectoryError(f"base_repo_path is not a directory: {self.base_repo_path}")
         self._workdir: Path | None = None
+        # Paths of the base repo that create() deliberately did NOT copy
+        # (P0 D2), with the reason -- reported in the Evidence Bundle.
+        self.excluded_paths: list[dict[str, str]] = []
+        self._exclude: tuple[str, ...] = ()
 
     @property
     def workdir(self) -> Path:
@@ -58,9 +64,24 @@ class LocalCowSandbox:
             raise RuntimeError("sandbox not created yet -- call create() first")
         return self._workdir
 
-    def create(self) -> None:
+    def create(self, *, exclude: Sequence[str] = ()) -> None:
+        """Copy the base repo into a fresh workspace, minus ``exclude``
+        (the contract's ``forbidden_paths``, P0 D2): a forbidden file is not
+        filtered at read time, it is simply absent -- no executed code can
+        read what is not there.
+
+        ``exclude`` uses the same prefix rule as the Policy Engine
+        (``path_matches_prefix``): ``"config/"`` drops the whole subtree.
+        Symlinks are copied as symlinks (never followed), and a symlink in
+        the base is itself excluded when it is absolute, resolves outside
+        the repo, or resolves into an excluded path -- otherwise a link
+        could re-expose a forbidden file or a host file. Every exclusion is
+        recorded in ``excluded_paths``.
+        """
         if self._workdir is not None:
             raise RuntimeError("sandbox already created")
+        self._exclude = tuple(exclude)
+        self.excluded_paths = []
         tmp = Path(tempfile.mkdtemp(prefix="aigis-sandbox-"))
         # copytree requires the destination not to already exist.
         workdir = tmp / "workspace"
@@ -68,8 +89,53 @@ class LocalCowSandbox:
         # default (False) would copy the *target's* content -- possibly a
         # host file outside the repo -- into the workspace, and the observed
         # change set (changed_paths) would then see a spurious type change.
-        shutil.copytree(self.base_repo_path, workdir, symlinks=True)
+        shutil.copytree(
+            self.base_repo_path, workdir, symlinks=True, ignore=self._copy_ignore
+        )
         self._workdir = workdir
+
+    def _is_forbidden(self, rel_path: str) -> bool:
+        return any(path_matches_prefix(rel_path, prefix) for prefix in self._exclude)
+
+    def _unsafe_link_reason(self, link: Path) -> str | None:
+        target = os.readlink(link)
+        if os.path.isabs(target) or PureWindowsPath(target).drive:
+            return "symlink_absolute"
+        resolved = Path(os.path.realpath(link))
+        try:
+            rel_target = resolved.relative_to(self.base_repo_path).as_posix()
+        except ValueError:
+            return "symlink_outside_repo"
+        if self._is_forbidden(rel_target):
+            return "symlink_to_forbidden"
+        return None
+
+    def _copy_ignore(self, dirpath: str, names: list[str]) -> list[str]:
+        rel_dir = Path(dirpath).resolve().relative_to(self.base_repo_path)
+        skipped: list[str] = []
+        for name in names:
+            rel_path = (rel_dir / name).as_posix()
+            full = Path(dirpath) / name
+            if self._is_forbidden(rel_path):
+                reason = "forbidden_path"
+            elif full.is_symlink():
+                reason = self._unsafe_link_reason(full)
+            else:
+                reason = None
+            if reason is not None:
+                skipped.append(name)
+                self.excluded_paths.append({"path": rel_path, "reason": reason})
+        return skipped
+
+    def _excluded_from_base(self, rel_path: str) -> bool:
+        """Same set create() skipped -- so a path that was never copied is
+        not reported as a deletion by changed_paths()/collect_diff().
+        Applied to the BASE side only: anything the agent creates in the
+        workspace, forbidden or not, is always visible as a change.
+        """
+        return any(
+            path_matches_prefix(rel_path, entry["path"]) for entry in self.excluded_paths
+        )
 
     def _resolve(self, path: str) -> Path:
         candidate = (self.workdir / path).resolve()
@@ -120,8 +186,13 @@ class LocalCowSandbox:
             exit_code=completed.returncode, stdout=completed.stdout, stderr=completed.stderr
         )
 
+    def _changes(self) -> list[_Change]:
+        return _tree_changes(
+            self.base_repo_path, self.workdir, base_excluded=self._excluded_from_base
+        )
+
     def collect_diff(self) -> str:
-        return _render_diff(_tree_changes(self.base_repo_path, self.workdir))
+        return _render_diff(self._changes())
 
     def changed_paths(self) -> list[str]:
         """Every path that differs between the base repo and the workspace,
@@ -132,7 +203,7 @@ class LocalCowSandbox:
         string), never followed. Same comparison as ``collect_diff``, so
         ``diff.patch`` and this list cannot diverge.
         """
-        return [change.path for change in _tree_changes(self.base_repo_path, self.workdir)]
+        return [change.path for change in self._changes()]
 
     def destroy(self) -> None:
         if self._workdir is not None:
@@ -194,7 +265,7 @@ def _is_ignored(rel_parts: tuple[str, ...]) -> bool:
     return any(part in _DIFF_IGNORED_DIR_NAMES for part in rel_parts)
 
 
-def _snapshot(root: Path) -> dict[str, _Entry]:
+def _snapshot(root: Path, skip: Callable[[str], bool] | None = None) -> dict[str, _Entry]:
     """Every non-directory entry under ``root``, keyed by POSIX relative
     path. ``os.walk(followlinks=False)`` plus ``lstat``: a symlink -- to a
     file or to a directory, inside or outside the tree -- is recorded as a
@@ -207,10 +278,15 @@ def _snapshot(root: Path) -> dict[str, _Entry]:
         rel_dir = current.relative_to(root).parts
         # prune ignored directories; a symlinked directory is not descended
         # into by os.walk, but it IS a change we must record below.
-        dirnames[:] = [d for d in dirnames if d not in _DIFF_IGNORED_DIR_NAMES]
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in _DIFF_IGNORED_DIR_NAMES
+            and not (skip and skip("/".join((*rel_dir, d))))
+        ]
         for name in [*filenames, *(d for d in dirnames if (current / d).is_symlink())]:
             rel_parts = (*rel_dir, name)
-            if _is_ignored(rel_parts):
+            if _is_ignored(rel_parts) or (skip and skip("/".join(rel_parts))):
                 continue
             full = current / name
             st = full.lstat()
@@ -224,13 +300,15 @@ def _snapshot(root: Path) -> dict[str, _Entry]:
     return entries
 
 
-def _tree_changes(base: Path, workdir: Path) -> list[_Change]:
+def _tree_changes(
+    base: Path, workdir: Path, *, base_excluded: Callable[[str], bool] | None = None
+) -> list[_Change]:
     """The single base-vs-workspace comparison behind both ``collect_diff``
     and ``changed_paths`` -- the plain-filesystem equivalent of
     ``git status``/``git diff`` for a base repo that may not itself be a
     git repository (the toy repos this sandbox runs against).
     """
-    base_entries = _snapshot(base)
+    base_entries = _snapshot(base, base_excluded)
     work_entries = _snapshot(workdir)
     changes: list[_Change] = []
     for rel_path in sorted(base_entries.keys() | work_entries.keys()):

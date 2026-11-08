@@ -64,6 +64,7 @@ class EvidenceBundleWriter:
         environment: EnvironmentMetadata,
         diff: str,
         observed_changes: list[str] | None = None,
+        excluded_paths: list[dict[str, str]] | None = None,
     ) -> Evidence:
         run_dir = self.base_dir / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -94,6 +95,13 @@ class EvidenceBundleWriter:
             # What the Decision Engine's scope_ok/max_files_changed were
             # computed from (P0 D4) -- same comparison as diff.patch.
             write_file("changed-paths.json", _dump(sorted(observed_changes)))
+        if excluded_paths is not None:
+            # What the sandbox deliberately did NOT copy from the base repo
+            # (P0 D2): forbidden paths and unsafe symlinks, with the reason.
+            write_file(
+                "excluded-paths.json",
+                _dump(sorted(excluded_paths, key=lambda entry: entry["path"])),
+            )
 
         resolved_gates: list[GateResult] = []
         report_path_by_gate: dict[str, str] = {}

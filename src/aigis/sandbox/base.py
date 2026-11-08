@@ -20,6 +20,7 @@ anything upstream of it -- same dependency-inversion shape as
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol
 
 from pydantic import BaseModel
@@ -49,7 +50,11 @@ class Sandbox(Protocol):
     ``policy/executor.py``).
     """
 
-    def create(self) -> None: ...
+    def create(self, *, exclude: Sequence[str] = ()) -> None:
+        """``exclude`` = the contract's ``forbidden_paths`` (P0 D2): those
+        paths must not exist in the workspace at all.
+        """
+        ...
 
     def read_file(self, path: str) -> str: ...
 

@@ -57,7 +57,9 @@ def run_task(
     run_id = run_id or f"run-{uuid.uuid4().hex[:12]}"
 
     sandbox: Sandbox = sandbox_factory(base_repo)
-    sandbox.create()
+    # P0 D2: forbidden paths are not copied into the workspace at all.
+    sandbox.create(exclude=contract.forbidden_paths)
+    excluded_paths = list(getattr(sandbox, "excluded_paths", []))
     try:
         executor = SandboxedToolExecutor(PolicyEngine(contract), sandbox)
         runtime = AgentRuntime(contract, provider, executor)
@@ -100,6 +102,7 @@ def run_task(
         environment=environment,
         diff=diff,
         observed_changes=observed_changes,
+        excluded_paths=excluded_paths,
     )
 
     decision = DecisionEngine().decide(
