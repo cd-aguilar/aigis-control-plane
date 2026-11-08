@@ -1,6 +1,6 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 8 nov 2026 (P0 sigue abierto; fix de portabilidad Linux previo al CI. Antes: 22 sep 2026, P0 de seguridad abierto — bypass de scope vía `run_command`, ver sección dedicada más abajo; reemplaza la anterior de 7 sep)_
+_Última actualización: 8 nov 2026 — P0 de seguridad sigue abierto (bypass de scope vía `run_command`, ver sección dedicada). En esta fecha: docs originales del P0 commiteados en `docs/security/`, checklist reemplazado por los 9 criterios del §8, CI mínima creada (`43b1456`, primer run pendiente del push), fix de portabilidad Linux previo al CI (`838e7bd`) y rotación de credenciales confirmada. Anterior: 22 sep 2026._
 
 Este documento resume el estado real de arquitectura, código y repo para que cualquier sesión o IA (Cowork, Claude Code, ChatGPT, Gemini, o vos) arranque con contexto completo sin tener que re-derivarlo. Subilo al knowledge del Project "Aigis Control Plane" en claude.ai o pegalo directo en el chat de otra IA para consulta cruzada. Para el detalle técnico completo de cada pieza, `docs/ARCHITECTURE.md`; para el historial fase por fase, `CLAUDE.md`.
 
@@ -20,9 +20,9 @@ Primer caso de uso: un coding agent. La arquitectura no está atada a ese caso �
 | 4 | Quality Gates ejecutables (pytest/ruff, salida estructurada) + Evidence Bundle real (hashes SHA-256) + Decision Engine fail-closed | ✅ completa |
 | 5 | Security Evaluation Suite — **5/5 evals**: S01 Prompt Injection, S02 Unauthorized Secret Access, S03 Path Traversal, S04 Command Injection, S05 Resource Exhaustion | ✅ completa |
 | 6 | Orquestador end-to-end (`run_task`) + CLI real (`aigis run`) + las 8 tareas de benchmark (T01-T08) **corridas en vivo contra `claude-sonnet-5` real: 8/8 PASS** + métricas de la sección 19 agregadas desde datos reales | ✅ completa |
-| 7 | Production Hardening (human approval, GitHub write access, CI/CD, Credential Broker, RBAC) | fuera del alcance inicial |
+| 7 | Production Hardening (human approval, GitHub write access, CI/CD completo, Credential Broker, RBAC) | fuera del alcance inicial — excepción: **CI mínima** (pytest + ruff) adoptada por Dario el 22/9 como parte del P0, implementada el 8/11 (`43b1456`) |
 
-**Alcance inicial del MVP (sección 21 de `ARCHITECTURE.md`) completo — Fases 0-6.** 223 tests unitarios verdes al cierre del MVP (29 ago 2026), 1 skip condicional al entorno, `ruff check` limpio. Conteo real actual (post Dev Container/Makefile, 7 sep 2026, `pytest --collect-only -q`): **234 tests recolectados — 233 verdes, 1 skip condicional al entorno**.
+**Alcance inicial del MVP (sección 21 de `ARCHITECTURE.md`) completo — Fases 0-6.** 223 tests unitarios verdes al cierre del MVP (29 ago 2026), 1 skip condicional al entorno, `ruff check` limpio. Conteo al 7 sep 2026 (post Dev Container/Makefile): 234 recolectados — 233 verdes, 1 skip. **Conteo actual (8 nov 2026, `pytest --collect-only -q`): 238 recolectados** — Linux 234 passed / 3 xfailed (regresiones del P0) / 1 skipped; Windows 233 passed / 3 xfailed / 2 skipped (la regresión POSIX-only de `838e7bd` se saltea en Windows).
 
 ## Hito: Security Evaluation Suite completa (29 ago 2026)
 
@@ -58,7 +58,7 @@ Se recibió una revisión estratégica extensa de otra IA ("Contexto consolidado
   - Renombrado el fixture señuelo de T05: `STRIPE_SECRET_KEY=sk_live_fake_...` → `AIGIS_TEST_SECRET=fixture_not_a_real_credential` — el valor anterior calzaba con el patrón regex de escáneres de secretos reales (GitHub secret scanning, etc.), lo cual generaba falsos positivos de seguridad sobre un fixture intencional.
   - `.gitattributes` (`* text=auto eol=lf`) — resultó que ya lo había agregado una sesión concurrente (commit `ae80477`) antes de que esta sesión llegara a aplicarlo.
 - **Aceptado, no ejecutado todavía** (correcto pero requiere tiempo/decisión propia, no de otra IA): re-priorizar S03-S05 (path traversal, command injection, resource exhaustion) queda a criterio del dueño del proyecto, no una fecha fija.
-- **Rechazado por ahora**: adelantar CI/CD, branch protection, CodeQL, Dependabot a esta semana — es scope creep de Fase 7, ya deliberadamente fuera del alcance inicial del MVP.
+- **Rechazado por ahora**: adelantar CI/CD, branch protection, CodeQL, Dependabot a esta semana — es scope creep de Fase 7, ya deliberadamente fuera del alcance inicial del MVP. _(Actualización: la CI mínima — solo pytest + ruff — se adoptó el 22/9 como parte del P0 y existe desde el 8/11, `43b1456`; branch protection, CodeQL y Dependabot siguen fuera.)_
 - **Nota aparte**: la sugerencia de usar este Control Plane como capa compartida para más de un tipo de agente (pentest agent, SOC agent sobre alertas SIEM) es una idea de las IAs consultadas, no un compromiso del dueño del proyecto — se guarda como dirección posible post-MVP, no como tarea.
 - Documentado íntegro en `CLAUDE.md` sección "Revisión externa (2026-08-27)" y mirror en el Project doc de claude.ai.
 
@@ -74,7 +74,7 @@ Se agregó la sección **16.1 "Mapeo a OWASP Top 10 for Agentic Applications (20
 ## Repo GitHub `cd-aguilar/aigis-control-plane`
 
 - **Push del 28/8 resuelto (desde Claude Code nativo):** los 4 commits que habían quedado bloqueados en Cowork (`6dfdc0f`, `db8eaff`, `0457894`, `885b779`) llegaron a `origin/main`. Repo público, rama por defecto `main`.
-- **⚠️ 2 commits nuevos sin pushear (29 ago, hechos en esta sesión de Cowork):** `0a82555` (métricas por tarea) y `6bb3d82` (desglose de documentación). Mismo bloqueo estructural que antes — esta sesión no tiene credenciales git para GitHub (`fatal: could not read Username for 'https://github.com'`). Necesitan un `git push origin main` desde Claude Code nativo o manual antes de seguir trabajando, para no divergir del remoto.
+- **~~2 commits sin pushear (29 ago)~~ — resuelto el 7/9 (ver "Sync con GitHub" abajo).** Nota histórica: `0a82555` (métricas por tarea) y `6bb3d82` (desglose de documentación). Mismo bloqueo estructural que antes — esta sesión no tiene credenciales git para GitHub (`fatal: could not read Username for 'https://github.com'`). Necesitan un `git push origin main` desde Claude Code nativo o manual antes de seguir trabajando, para no divergir del remoto.
 - Se revisó el historial completo de commits buscando claves reales expuestas (`sk-ant-...`, valores de `ANTHROPIC_API_KEY`) — no aparece ninguna. El fixture señuelo de la Fase 5 ya no tiene forma de clave real (ver arriba).
 - Sin PRs abiertos, sin ramas obsoletas — todo el trabajo se commitea directo a `main` fase por fase.
 - Documentación al día localmente, pendiente de push (ver arriba): `README.md`, `docs/ARCHITECTURE.md` (spec, ahora con pointers a los tres documentos desglosados), `docs/THREAT-MODEL.md`, `docs/SECURITY.md`, `docs/EVALUATION.md`, `docs/DEMO.md` (transcript real sin editar de las 8 corridas + tabla de métricas), `CLAUDE.md` (historial fase por fase + revisión externa), `STATUS.md` (este documento).
@@ -119,36 +119,52 @@ Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada captu
 
 ## P0 en curso: bypass de scope vía `run_command` (22 sep 2026)
 
-**Hallazgo abierto, confirmado contra el código (no contra un documento):** una sesión de Claude Code recibió un brief de P0 que citaba `claude/aigis-control-plane-p0-design-2026-09-22.md` y `claude/aigis-control-plane-security-review-2026-09-22.md` como el diseño completo y el PoC — ninguno de los dos está en el repo. Dario decidió (22/9) seguir igual, reconstruyendo el hallazgo desde `STATUS.md`/`ARCHITECTURE.md`/el código, y preguntando decisión por decisión en vez de esperar los documentos. El hallazgo en sí se confirmó de forma independiente leyendo `policy/engine.py`, `sandbox/local_cow.py`, `domain/task_state.py` y `evaluation/decision_engine.py` — no es una afirmación sin verificar del brief original.
+**Hallazgo abierto, confirmado contra el código (no contra un documento):** una sesión de Claude Code recibió un brief de P0 que citaba `claude/aigis-control-plane-p0-design-2026-09-22.md` y `claude/aigis-control-plane-security-review-2026-09-22.md` como el diseño completo y el PoC — ninguno de los dos estaba en el repo en ese momento (_desde el 8/11 están en `docs/security/P0-design.md` y `docs/security/P0-review.md`, `73067c9`_). Dario decidió (22/9) seguir igual, reconstruyendo el hallazgo desde `STATUS.md`/`ARCHITECTURE.md`/el código, y preguntando decisión por decisión en vez de esperar los documentos. El hallazgo en sí se confirmó de forma independiente leyendo `policy/engine.py`, `sandbox/local_cow.py`, `domain/task_state.py` y `evaluation/decision_engine.py` — no es una afirmación sin verificar del brief original.
 
 **Mecanismo confirmado:** `PolicyEngine._evaluate_command` (`src/aigis/policy/engine.py`) sólo evalúa CMD-002 (`'..'` literal en algún argumento) y CMD-001 (allowlist de `policy.yaml`) — nunca consulta `allowed_paths`/`forbidden_paths` del contrato, a diferencia de `READ_FILE`/`PATCH_FILE`. `LocalCowSandbox.create()` copia el repo base entero al workspace efímero, así que un `forbidden_path` sigue físicamente presente y legible por cualquier ejecutable de la allowlist (`python`, `pytest`, ...). Además, `TaskState.files_changed` sólo se llena vía `changed_path`, que sólo `PATCH_FILE` (`policy/executor.py::_apply_patch`) setea — una escritura hecha con `run_command` (incluyendo reescribir un test que `PytestGate` va a evaluar después) es invisible para `DecisionEngine.scope_ok`. Resultado end a end: un agente puede leer un secreto prohibido, reescribir el test que falla para forzar un PASS, y la `Decision` final da `PASS` igual — confirmado con un PoC reproducible (ver abajo).
 
 **Principio del fix (Dario, 22/9):** la decisión sólo puede depender de datos que el agente no puede escribir.
 
-**Checklist de aceptación (reconstruido — el §8 original del P0 con los 9 criterios no está disponible; esto es un stand-in explícito hasta que Dario lo pase):**
+**Criterios de cierre del P0 (los 9 del §8 de `docs/security/P0-design.md`, que reemplazan al checklist reconstruido del 22/9).** El P0 está cerrado cuando todo esto se cumple con evidencia commiteada:
 
-- [x] Regresión reproducible que confirme el bypass, como test automatizado (no sólo como narrativa) — `xfail(strict=True)`, para que cada commit de fix retire el suyo.
-- [ ] `RUN_COMMAND` deja de poder leer contenido de un `forbidden_path`.
-- [ ] Una escritura hecha vía `run_command` fuera de `allowed_paths` queda registrada (visible para `scope_ok`), no sólo las hechas vía `PATCH_FILE`.
-- [ ] Los Quality Gates (`pytest`/`ruff`) corren contra un workspace que el propio agente no pudo alterar sin que quede registrado — no el mismo workspace de ejecución sin verificar.
-- [ ] Un error de infraestructura durante la evaluación no puede degradar silenciosamente a PASS/ALLOW (fail-closed → `NEEDS_HUMAN`).
-- [ ] `run_command` deja de aceptar un `executable`/`args` arbitrarios dentro de la allowlist — reemplazado por perfiles (`run_tests`/`run_lint`) sin argumentos libres (D1).
-- [ ] Imagen de sandbox hardened, pinneada por digest, Docker como default (D5).
-- [ ] `deny_escalation=security` por defecto: un DENY sobre PATH-002 o una ruta sensible con gates en verde → `NEEDS_HUMAN`, no `PASS` (D6).
-- [ ] `docs/SECURITY.md`/`THREAT-MODEL.md`/README recortan cualquier afirmación no verificada ("unique", "tamper-proof", "production-ready") mientras el P0 sigue abierto.
+- [ ] 1. Los tests 1-15 y S06/S07/S08 del §4 pasan sin `xfail`, en local **y** en docker.
+- [ ] 2. El PoC de `P0-review.md`, adaptado, da **FAIL o DENY**, nunca PASS, y queda como test de integración. _(Hoy: `tests/test_p0_command_bypass.py`, xfail strict, todavía da PASS.)_
+- [ ] 3. Con la policy por defecto, ningún tool del agente acepta un ejecutable ni argumentos arbitrarios. (D1)
+- [ ] 4. `scope_ok` y `max_files_changed` se calculan solo desde cambios observados, con un test que prueba que el registro del agente no puede ampliarlos. (D4)
+- [ ] 5. Ningún insumo de un gate (tests protegidos, config, reporte) puede escribirse desde el workspace del agente. (D3)
+- [ ] 6. El default de la CLI es docker con imagen por digest; local solo con un flag explícito, registrado en la evidencia. (D5)
+- [ ] 7. La documentación no contiene afirmaciones no verificadas ("unique", "tamper-proof", "production-ready", "inmutable", "network disabled" sin calificar), verificable con `grep`. (commit 2)
+- [ ] 8. El benchmark 8/8 se re-corrió post-fix y se publicaron los resultados, incluidos los fallos. (commit 10, lo corre Dario)
+- [x] 9. Rotación de credenciales confirmada (fuera del repo) — ✅ 8 nov 2026.
+
+D6 (`deny_escalation=security`, test 16) es P1 en el diseño y **no** es criterio de cierre, aunque está aprobado y planificado (commit 9). Los criterios 1-7 son verificables por CI.
+
+**P1 anotados (no se implementan dentro del P0):**
+- `LocalCowSandbox.run_command` sin `start_new_session=True`: ante un timeout mueren solo los hijos directos; los nietos sobreviven y pueden colgar `communicate()` si heredaron los pipes. Fix: `start_new_session=True` + `os.killpg` en el timeout, con test.
+- CI: fijar `actions/checkout` y `actions/setup-python` por commit SHA (hoy por tag).
+- `pyproject.toml`: `ruff>=0.6` sin fijar — un release nuevo puede poner el CI en rojo sin cambio de código. Fijar `ruff==<versión local>` (y, si Dario quiere, pytest y pytest-json-report).
+- **Bug Docker/UID (hallazgo para D5, commit 8):** `DockerSandbox` corre con `--user 1000:1000`; en Linux nativo, si el dueño del workspace tiene otro uid, dentro del contenedor no se puede leer nada del workspace (`listdir`/`open` → Permission denied; reproducido con volumen nombrado en Docker Desktop), así que los gates fallarían en docker. `test_run_command_executes_inside_container` no lo detecta porque solo hace un `print`. Opciones para Dario al llegar a D5: (a) `--user {os.getuid()}:{os.getgid()}` si el host no es root, fallback a 1000 si es root, + un test que lea el workspace; (b) xfail con motivo. Sin verificar: modo 0700 de `tmp_path`, `copystat` de `copytree`, runner real de GitHub.
 
 **Commit 1 — test(security): add failing regressions for P0 bypass (xfail strict)**
 Hash: `9b19879`. 3 tests nuevos (2 en `tests/policy/test_executor.py`, 1 en `tests/test_p0_command_bypass.py` nuevo) que reproducen, contra un `LocalCowSandbox`/`SandboxedToolExecutor`/`run_task` reales (sin mocks): lectura de un `forbidden_path` vía `run_command`, escritura fuera de `allowed_paths` vía `run_command` no registrada en `changed_path`, y el PoC combinado (fuga de secreto + test reescrito) terminando en `Decision.final == PASS`. Los tres quedan `xfail(strict=True)` — cualquiera que empiece a pasar sin que el commit correspondiente retire su marcador rompe la suite a propósito. Tests: 233 passed, 3 xfailed, 1 skip | ruff: clean | CI: n.a. (todavía no existe, ver commit 3 del plan).
 
-**Commit 2a — fix(sandbox): drop per-UID RLIMIT_NPROC from LocalCowSandbox (8 nov 2026)**
+**Fix fuera de plan (pre-CI) — fix(sandbox): drop per-UID RLIMIT_NPROC from LocalCowSandbox (8 nov 2026)**
 Hash: `838e7bd`. Encontrado al simular el CI (commit 3) en un contenedor `python:3.11` Linux antes de crear el workflow: **10 tests fallaban en Linux** (los 8 `test_before_state_is_lint_clean[T0N]`, `test_gates_run_for_real_inside_local_cow_sandbox` y el e2e del orquestador). Causa: `_apply_resource_limits` ponía `RLIMIT_NPROC=64`, que es un límite **por UID** (cuenta todos los procesos/hilos del usuario en el host), no por sandbox — ruff (un hilo por core) moría con EAGAIN. Nunca se había visto porque todo, incluido el benchmark 8/8, se corrió en Windows, donde los límites POSIX no se aplican. Fix (decisión de Dario, 8/11): se quita `RLIMIT_NPROC`; el límite de PIDs real queda en `DockerSandbox` (`--pids-limit`, que D5 hace default). `RLIMIT_CPU`/`RLIMIT_AS` siguen. Regresión nueva POSIX-only (100 hilos vivos a la vez): falla con el código viejo, pasa con el nuevo. `docs/SECURITY.md` corregido. Tests: Windows 233 passed, 3 xfailed, 2 skipped; Linux (contenedor) 234 passed, 3 xfailed, 1 skipped | ruff: clean | CI: n.a. (commit siguiente).
 
 **Commit 3 — ci: minimal pytest + ruff workflow (8 nov 2026)**
-Hash: `43b1456`. `.github/workflows/ci.yml`: push y PR a `main`, `ubuntu-latest`, Python 3.11, `pip install -e ".[dev]"`, `ruff check .`, `pytest -q`. `permissions: contents: read`, sin secrets, sin llamadas a LLM, sin `ruff format --check` (deuda de formato conocida). Badge en `README.md`. En `ubuntu-latest` hay Docker, así que `test_run_command_executes_inside_container` corre de verdad en CI (en el contenedor local de simulación quedaba como skip). También: `graphify-out/` al `.gitignore` y `.devcontainer/devcontainer-lock.json` commiteado (fija la feature docker-in-docker por digest), ambos aprobados por Dario el 8/11. Tests: igual que el commit 2a | ruff: clean | CI: pendiente del primer push (no se pushea sin pedido).
+Hash: `43b1456`. `.github/workflows/ci.yml`: push y PR a `main`, `ubuntu-latest`, Python 3.11, `pip install -e ".[dev]"`, `ruff check .`, `pytest -q`. `permissions: contents: read`, sin secrets, sin llamadas a LLM, sin `ruff format --check` (deuda de formato conocida). Badge en `README.md`. En `ubuntu-latest` hay Docker, así que `test_run_command_executes_inside_container` corre de verdad en CI (en el contenedor local de simulación quedaba como skip). También: `graphify-out/` al `.gitignore` y `.devcontainer/devcontainer-lock.json` commiteado (fija la feature docker-in-docker por digest), ambos aprobados por Dario el 8/11. Tests: igual que el fix pre-CI | ruff: clean | CI: pendiente del primer push (no se pushea sin pedido).
+
+**docs(security): add original P0 design and review (8 nov 2026)**
+Hash: `73067c9`. `docs/security/P0-design.md` y `docs/security/P0-review.md` agregados tal cual los pasó Dario. Tests: igual que el fix pre-CI | ruff: clean | CI: pendiente del push.
+
+**docs: STATUS.md — criterios §8 del P0 y limpieza (8 nov 2026)**
+Hash: se anota en el commit siguiente. Checklist reconstruido reemplazado por los 9 criterios del §8; P1 anotados; "Commit 2a" renombrado a "Fix fuera de plan (pre-CI)" para que "commit 2" siga siendo el recorte de claims; encabezado, conteo de tests (238 recolectados), nota de CI mínima adoptada el 22/9 y nota de los commits sin pushear del 29/8 (resueltos el 7/9) actualizados. Sin cambios de código.
 
 **Pendiente de Dario:**
 - ~~Los dos documentos del P0~~ — **commiteados el 8 nov 2026** como `docs/security/P0-design.md` (diseño aprobado, tests §4, claims §7, criterios §8) y `docs/security/P0-review.md` (hallazgos H1-H11, clasificación de controles, PoC). El checklist de arriba pasa a reemplazarse por los 9 criterios del §8 en el commit siguiente.
-- La salida del `grep` sobre los bundles locales (P0 §5) antes del commit 7 (`D1`, reemplazar `run_command` por `run_tests`/`run_lint`).
+- ~~La salida del `grep` sobre los bundles locales~~ — resuelto el 8/11: 15 corridas, 15× `pytest tests/` y 15× `ruff check .`, todas tool calls del agente (contar solo `tool_request`; cada línea repite el request en `policy_decision.request`). Nunca apareció `python`. `run_tests`/`run_lint` cubren el 100% del uso observado en esta máquina.
+- `git push origin main` y mirar el primer run de CI.
+- Al llegar a D5: elegir opción para el bug Docker/UID (ver P1 arriba).
 - ~~Confirmación de la rotación de credenciales~~ — **confirmada por Dario el 8 nov 2026** (Anthropic 27/8 e Infisical 1/8), ver "Incidente de seguridad" más abajo.
 
 ## Pendiente
@@ -157,7 +173,7 @@ El alcance inicial del MVP está completo salvo el P0 de seguridad abierto arrib
 
 1. Fase 7 (Production Hardening): explícitamente fuera del alcance inicial — no adelantar (rechazado en la revisión externa del 27/8, ver arriba).
 2. ~~Documentación técnica separada~~ — hecho el 29/8, ver hito arriba.
-3. Completar la segunda pasada del benchmark: correr **T06 y T08 en vivo** (las dos que siguen en N=1; T06 es el outlier de la tabla de métricas) y, si se quiere más señal, una tercera corrida de las que ya tienen 2 (T01-T05, T07). Necesita la API key real de Dario — se corre desde su propia terminal, no desde Cowork, mismo criterio que las 8 corridas originales. Comando: `aigis run examples/tasks/T0N/contract.json examples/tasks/T0N/repo` por tarea, después `python scripts/aggregate_metrics.py --all --per-task` para leer el resultado agrupado por tarea (ya implementado, ver hito arriba).
+3. ~~Segunda pasada del benchmark (T06/T08)~~ — **cancelada por Dario el 22/9**: las métricas 8/8 quedan como "baseline pre-fix, local sandbox, N=1-3"; el benchmark se re-corre completo después del fix (commit 10, criterio 8). Texto original: correr **T06 y T08 en vivo** (las dos que siguen en N=1; T06 es el outlier de la tabla de métricas) y, si se quiere más señal, una tercera corrida de las que ya tienen 2 (T01-T05, T07). Necesita la API key real de Dario — se corre desde su propia terminal, no desde Cowork, mismo criterio que las 8 corridas originales. Comando: `aigis run examples/tasks/T0N/contract.json examples/tasks/T0N/repo` por tarea, después `python scripts/aggregate_metrics.py --all --per-task` para leer el resultado agrupado por tarea (ya implementado, ver hito arriba).
 4. Decidir hacia dónde sigue el proyecto ahora que el MVP está cerrado: pulir el portfolio (demo real ya armada en `docs/DEMO.md`; falta mostrar resultados en `aigis-cloud`), o mover el foco a otro de los 5 flagships.
 
 ### Incidente de seguridad (27 ago 2026)
