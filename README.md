@@ -1,5 +1,7 @@
 # aigis-control-plane
 
+[![ci](https://github.com/cd-aguilar/aigis-control-plane/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cd-aguilar/aigis-control-plane/actions/workflows/ci.yml)
+
 **Evidence-Driven Agent Harness.** A security-first control plane for AI coding
 agents that separates *what the agent can do* from *what it's authorized to
 do* from *whether the task actually got done*.
