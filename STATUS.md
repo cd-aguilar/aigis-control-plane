@@ -147,7 +147,7 @@ Hash: `838e7bd`. Encontrado al simular el CI (commit 3) en un contenedor `python
 Hash: `43b1456`. `.github/workflows/ci.yml`: push y PR a `main`, `ubuntu-latest`, Python 3.11, `pip install -e ".[dev]"`, `ruff check .`, `pytest -q`. `permissions: contents: read`, sin secrets, sin llamadas a LLM, sin `ruff format --check` (deuda de formato conocida). Badge en `README.md`. En `ubuntu-latest` hay Docker, así que `test_run_command_executes_inside_container` corre de verdad en CI (en el contenedor local de simulación quedaba como skip). También: `graphify-out/` al `.gitignore` y `.devcontainer/devcontainer-lock.json` commiteado (fija la feature docker-in-docker por digest), ambos aprobados por Dario el 8/11. Tests: igual que el commit 2a | ruff: clean | CI: pendiente del primer push (no se pushea sin pedido).
 
 **Pendiente de Dario:**
-- Los dos documentos citados en el brief del P0 (`claude/aigis-control-plane-p0-design-2026-09-22.md`, `claude/aigis-control-plane-security-review-2026-09-22.md`) — si existen en otro lado, pasarlos; si no, el checklist de arriba sigue siendo el reconstruido, no el original.
+- ~~Los dos documentos del P0~~ — **commiteados el 8 nov 2026** como `docs/security/P0-design.md` (diseño aprobado, tests §4, claims §7, criterios §8) y `docs/security/P0-review.md` (hallazgos H1-H11, clasificación de controles, PoC). El checklist de arriba pasa a reemplazarse por los 9 criterios del §8 en el commit siguiente.
 - La salida del `grep` sobre los bundles locales (P0 §5) antes del commit 7 (`D1`, reemplazar `run_command` por `run_tests`/`run_lint`).
 - ~~Confirmación de la rotación de credenciales~~ — **confirmada por Dario el 8 nov 2026** (Anthropic 27/8 e Infisical 1/8), ver "Incidente de seguridad" más abajo.
 
