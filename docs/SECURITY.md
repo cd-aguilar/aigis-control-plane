@@ -26,7 +26,7 @@ Determinista y externo al LLM (`src/aigis/policy/`): `ToolRequest → PolicyEngi
 
 Ejecución aislada (`src/aigis/sandbox/`), dos implementaciones del mismo protocolo:
 
-- **`LocalCowSandbox`** — copia efímera copy-on-write (`shutil.copytree`), límites de recursos POSIX (CPU/memoria/procesos vía `resource.setrlimit`), diff unificado contra el repo base. No aísla red ni usuario — es honesto sobre esa limitación en su propio docstring, no la esconde.
+- **`LocalCowSandbox`** — copia efímera copy-on-write (`shutil.copytree`), límites de recursos POSIX (CPU/memoria vía `resource.setrlimit`; sin límite de procesos — `RLIMIT_NPROC` es por UID, no por sandbox, y rompía herramientas multi-hilo como ruff en Linux; el límite de PIDs real está en `DockerSandbox`), diff unificado contra el repo base. No aísla red ni usuario — es honesto sobre esa limitación en su propio docstring, no la esconde.
 - **`DockerSandbox`** — reusa `LocalCowSandbox` para filesystem y ejecuta cada comando en un contenedor `docker run --rm` efímero: `--network none`, `--user 1000:1000`, `--read-only` + `--tmpfs /tmp`, límites de memoria/CPU/PIDs. Verificado contra un daemon Docker real, no solo con argv mockeado.
 
 `SandboxedToolExecutor` corre `PolicyEngine.evaluate()` antes de cualquier ejecución — un `DENY`/`REQUIRE_HUMAN` nunca llega al sandbox.

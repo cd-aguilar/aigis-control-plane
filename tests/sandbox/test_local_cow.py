@@ -141,6 +141,35 @@ def test_run_command_runs_with_workdir_as_cwd(base_repo: Path) -> None:
         sandbox.destroy()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX resource limits only")
+def test_run_command_allows_multithreaded_tools_under_posix_limits(base_repo: Path) -> None:
+    # Regression: RLIMIT_NPROC=64 (per-UID, not per-sandbox) made ruff crash
+    # with EAGAIN on Linux. 100 threads must be alive at the same time under
+    # the sandbox limits (daemon threads, so a failed start() exits, not hangs).
+    # Small stacks keep this about the thread COUNT, not RLIMIT_AS (1 GiB is
+    # intentional, and 100 x 8 MiB default stacks would hit it on their own).
+    script = (
+        "import sys, threading\n"
+        "threading.stack_size(256 * 1024)\n"
+        "ev = threading.Event()\n"
+        "try:\n"
+        "    for _ in range(100):\n"
+        "        threading.Thread(target=ev.wait, daemon=True).start()\n"
+        "except RuntimeError as exc:\n"
+        "    print(exc, file=sys.stderr); sys.exit(1)\n"
+        "ev.set()\n"
+        "print('ok')\n"
+    )
+    sandbox = LocalCowSandbox(base_repo)
+    sandbox.create()
+    try:
+        result = sandbox.run_command(sys.executable, ["-c", script], timeout_seconds=20)
+        assert result.exit_code == 0, result.stderr
+        assert "ok" in result.stdout
+    finally:
+        sandbox.destroy()
+
+
 def test_create_twice_raises() -> None:
     import tempfile
 

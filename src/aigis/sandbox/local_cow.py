@@ -124,21 +124,23 @@ class LocalCowSandbox:
 
 
 def _apply_resource_limits() -> None:
-    """``preexec_fn`` for POSIX: caps CPU time, address space and process
-    count for the sandboxed subprocess (ARCHITECTURE.md section 16,
-    "resource exhaustion" -> "CPU/memory/PID/time limits"). Runs in the
-    forked child before exec, so a limit here can never affect the parent.
-    Not available on Windows -- ``run_command`` only wires this in when
-    ``os.name == "posix"``.
+    """``preexec_fn`` for POSIX: caps CPU time and address space for the
+    sandboxed subprocess (ARCHITECTURE.md section 16, "resource exhaustion"
+    -> "CPU/memory/PID/time limits"). Runs in the forked child before exec,
+    so a limit here can never affect the parent. Not available on Windows --
+    ``run_command`` only wires this in when ``os.name == "posix"``.
+
+    Deliberately NO ``RLIMIT_NPROC``: it is a per-UID limit (every process
+    and thread the user owns on the host counts against it), not a
+    per-sandbox one. A value of 64 made any multi-threaded tool (ruff spawns
+    one thread per core) crash with EAGAIN on a normal Linux host, while
+    providing no real bound on the sandbox itself. The PID limit lives in
+    ``DockerSandbox`` (``--pids-limit``), where it is scoped to the container.
     """
     import resource
 
     resource.setrlimit(resource.RLIMIT_CPU, (60, 60))
     resource.setrlimit(resource.RLIMIT_AS, (1 * 1024 * 1024 * 1024, 1 * 1024 * 1024 * 1024))
-    try:
-        resource.setrlimit(resource.RLIMIT_NPROC, (64, 64))
-    except (ValueError, OSError):  # pragma: no cover -- not all platforms allow this
-        pass
 
 
 # Directories/suffixes that are execution byproducts, not agent-authored

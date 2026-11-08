@@ -1,6 +1,6 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 22 sep 2026 (P0 de seguridad abierto — bypass de scope vía `run_command`, ver sección dedicada más abajo; reemplaza la anterior de 7 sep)_
+_Última actualización: 8 nov 2026 (P0 sigue abierto; fix de portabilidad Linux previo al CI. Antes: 22 sep 2026, P0 de seguridad abierto — bypass de scope vía `run_command`, ver sección dedicada más abajo; reemplaza la anterior de 7 sep)_
 
 Este documento resume el estado real de arquitectura, código y repo para que cualquier sesión o IA (Cowork, Claude Code, ChatGPT, Gemini, o vos) arranque con contexto completo sin tener que re-derivarlo. Subilo al knowledge del Project "Aigis Control Plane" en claude.ai o pegalo directo en el chat de otra IA para consulta cruzada. Para el detalle técnico completo de cada pieza, `docs/ARCHITECTURE.md`; para el historial fase por fase, `CLAUDE.md`.
 
@@ -139,6 +139,9 @@ Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada captu
 
 **Commit 1 — test(security): add failing regressions for P0 bypass (xfail strict)**
 Hash: `9b19879`. 3 tests nuevos (2 en `tests/policy/test_executor.py`, 1 en `tests/test_p0_command_bypass.py` nuevo) que reproducen, contra un `LocalCowSandbox`/`SandboxedToolExecutor`/`run_task` reales (sin mocks): lectura de un `forbidden_path` vía `run_command`, escritura fuera de `allowed_paths` vía `run_command` no registrada en `changed_path`, y el PoC combinado (fuga de secreto + test reescrito) terminando en `Decision.final == PASS`. Los tres quedan `xfail(strict=True)` — cualquiera que empiece a pasar sin que el commit correspondiente retire su marcador rompe la suite a propósito. Tests: 233 passed, 3 xfailed, 1 skip | ruff: clean | CI: n.a. (todavía no existe, ver commit 3 del plan).
+
+**Commit 2a — fix(sandbox): drop per-UID RLIMIT_NPROC from LocalCowSandbox (8 nov 2026)**
+Hash: se anota en el commit siguiente (un commit no puede contener su propio hash). Encontrado al simular el CI (commit 3) en un contenedor `python:3.11` Linux antes de crear el workflow: **10 tests fallaban en Linux** (los 8 `test_before_state_is_lint_clean[T0N]`, `test_gates_run_for_real_inside_local_cow_sandbox` y el e2e del orquestador). Causa: `_apply_resource_limits` ponía `RLIMIT_NPROC=64`, que es un límite **por UID** (cuenta todos los procesos/hilos del usuario en el host), no por sandbox — ruff (un hilo por core) moría con EAGAIN. Nunca se había visto porque todo, incluido el benchmark 8/8, se corrió en Windows, donde los límites POSIX no se aplican. Fix (decisión de Dario, 8/11): se quita `RLIMIT_NPROC`; el límite de PIDs real queda en `DockerSandbox` (`--pids-limit`, que D5 hace default). `RLIMIT_CPU`/`RLIMIT_AS` siguen. Regresión nueva POSIX-only (100 hilos vivos a la vez): falla con el código viejo, pasa con el nuevo. `docs/SECURITY.md` corregido. Tests: Windows 233 passed, 3 xfailed, 2 skipped; Linux (contenedor) 234 passed, 3 xfailed, 1 skipped | ruff: clean | CI: n.a. (commit siguiente).
 
 **Pendiente de Dario:**
 - Los dos documentos citados en el brief del P0 (`claude/aigis-control-plane-p0-design-2026-09-22.md`, `claude/aigis-control-plane-security-review-2026-09-22.md`) — si existen en otro lado, pasarlos; si no, el checklist de arriba sigue siendo el reconstruido, no el original.
