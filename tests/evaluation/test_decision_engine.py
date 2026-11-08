@@ -58,6 +58,7 @@ def test_all_green_run_is_pass(
     fresh_state.attempts.append(_attempt_with_decision(PolicyDecisionType.ALLOW))
 
     decision = engine.decide(
+        observed_changes=fresh_state.files_changed,
         run_id="r1", contract=contract, state=fresh_state, gate_results=_passing_gates()
     )
 
@@ -75,6 +76,7 @@ def test_deny_does_not_block_pass_by_itself(
     fresh_state.attempts.append(_attempt_with_decision(PolicyDecisionType.DENY))
 
     decision = engine.decide(
+        observed_changes=fresh_state.files_changed,
         run_id="r1", contract=contract, state=fresh_state, gate_results=_passing_gates()
     )
 
@@ -87,6 +89,7 @@ def test_require_human_forces_needs_human_even_with_green_gates(
     fresh_state.attempts.append(_attempt_with_decision(PolicyDecisionType.REQUIRE_HUMAN))
 
     decision = engine.decide(
+        observed_changes=fresh_state.files_changed,
         run_id="r1", contract=contract, state=fresh_state, gate_results=_passing_gates()
     )
 
@@ -104,6 +107,7 @@ def test_missing_required_gate_is_needs_human_not_fail(
     only_pytest = [GateResult(gate_name="pytest", gate_type=GateType.TEST, passed=True)]
 
     decision = engine.decide(
+        observed_changes=fresh_state.files_changed,
         run_id="r1", contract=contract, state=fresh_state, gate_results=only_pytest
     )
 
@@ -118,7 +122,13 @@ def test_failed_required_gate_is_fail(
         GateResult(gate_name="ruff", gate_type=GateType.LINT, passed=True),
     ]
 
-    decision = engine.decide(run_id="r1", contract=contract, state=fresh_state, gate_results=gates)
+    decision = engine.decide(
+        run_id="r1",
+        contract=contract,
+        state=fresh_state,
+        gate_results=gates,
+        observed_changes=fresh_state.files_changed,
+    )
 
     assert decision.final == FinalDecision.FAIL
     assert decision.tests_pass is False
@@ -134,6 +144,7 @@ def test_file_changed_outside_scope_is_fail(
     fresh_state.files_changed.add("README.md")  # outside contract's allowed_paths
 
     decision = engine.decide(
+        observed_changes=fresh_state.files_changed,
         run_id="r1", contract=contract, state=fresh_state, gate_results=_passing_gates()
     )
 
@@ -149,6 +160,7 @@ def test_exceeded_limits_is_fail(
     )
 
     decision = engine.decide(
+        observed_changes=fresh_state.files_changed,
         run_id="r1", contract=contract, state=fresh_state, gate_results=_passing_gates()
     )
 
@@ -160,6 +172,7 @@ def test_decision_carries_evidence_ref(
     engine: DecisionEngine, contract: TaskContract, fresh_state: TaskState
 ) -> None:
     decision = engine.decide(
+        observed_changes=fresh_state.files_changed,
         run_id="run-xyz", contract=contract, state=fresh_state, gate_results=_passing_gates()
     )
 

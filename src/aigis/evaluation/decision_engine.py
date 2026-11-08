@@ -18,6 +18,12 @@ suficiente, DENY o NEEDS_HUMAN — nunca se concede autoridad implícita"):
    producing a report) → ``NEEDS_HUMAN``. This is genuinely different from a
    gate that ran and failed: the Decision Engine has no verdict to trust
    either way, so it asks a human rather than guessing PASS or FAIL.
+   ``scope_ok`` and the ``max_files_changed`` part of ``resource_limits_ok``
+   are computed from ``observed_changes`` -- what the Sandbox saw change on
+   the filesystem -- never from ``TaskState.files_changed``, which is only
+   the agent's own tool log (P0 D4). A path that changed but never went
+   through ``patch_file`` is an ``untracked_modification``: ``scope_ok``
+   is False and the reason names the paths.
 3. Otherwise, if any of the six booleans in the Decision formula
    (``contract_valid AND policy_ok AND tests_pass AND lint_pass AND
    scope_ok AND resource_limits_ok``) is False → ``FAIL``. This is a
@@ -26,6 +32,8 @@ suficiente, DENY o NEEDS_HUMAN — nunca se concede autoridad implícita"):
 """
 
 from __future__ import annotations
+
+from collections.abc import Collection
 
 from aigis.domain import Decision, GateResult, PolicyDecisionType, TaskContract, TaskState
 from aigis.domain.enums import FinalDecision, GateType
@@ -40,16 +48,31 @@ class DecisionEngine:
         contract: TaskContract,
         state: TaskState,
         gate_results: list[GateResult],
+        observed_changes: Collection[str],
     ) -> Decision:
+        """``observed_changes`` is required, on purpose: there is no
+        fallback to the agent's tool log. A caller that cannot observe the
+        workspace cannot get a PASS out of this engine by omission.
+        """
         policy_ok = not any(
             attempt.policy_decision is not None
             and attempt.policy_decision.decision == PolicyDecisionType.REQUIRE_HUMAN
             for attempt in state.attempts
         )
-        scope_ok = all(
-            path_within_scope(path, contract) for path in state.files_changed
-        )
-        resource_limits_ok = state.is_within_limits(contract)
+        observed = sorted(set(observed_changes))
+        untracked = [path for path in observed if path not in state.files_changed]
+        out_of_scope = [path for path in observed if not path_within_scope(path, contract)]
+        scope_ok = not untracked and not out_of_scope
+
+        # Every limit from the state except max_files_changed, which is
+        # re-checked against what was observed -- the tool log can only
+        # under-count (a write through any other channel never reaches it).
+        breaches = [
+            breach
+            for breach in state.exceeded_limits(contract)
+            if breach.limit != "max_files_changed"
+        ]
+        resource_limits_ok = not breaches and len(observed) <= contract.max_files_changed
 
         by_name = {gate.gate_name: gate for gate in gate_results}
         missing_gates = [name for name in contract.required_gates if name not in by_name]
@@ -122,6 +145,16 @@ class DecisionEngine:
                 )
                 if not value
             ]
+            reason = f"failed check(s): {failed}"
+            if untracked:
+                reason += f"; untracked_modification: {untracked}"
+            if out_of_scope:
+                reason += f"; out_of_scope_change: {out_of_scope}"
+            if len(observed) > contract.max_files_changed:
+                reason += (
+                    f"; max_files_changed: {len(observed)} observed > "
+                    f"{contract.max_files_changed}"
+                )
             return self._build(
                 run_id,
                 contract,
@@ -132,7 +165,7 @@ class DecisionEngine:
                 scope_ok,
                 resource_limits_ok,
                 final=FinalDecision.FAIL,
-                reason=f"failed check(s): {failed}",
+                reason=reason,
             )
 
         return self._build(

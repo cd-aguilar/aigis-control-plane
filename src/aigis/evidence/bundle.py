@@ -63,6 +63,7 @@ class EvidenceBundleWriter:
         gate_results: list[GateResult],
         environment: EnvironmentMetadata,
         diff: str,
+        observed_changes: list[str] | None = None,
     ) -> Evidence:
         run_dir = self.base_dir / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -89,6 +90,10 @@ class EvidenceBundleWriter:
             ),
         )
         diff_path = write_file("diff.patch", diff)
+        if observed_changes is not None:
+            # What the Decision Engine's scope_ok/max_files_changed were
+            # computed from (P0 D4) -- same comparison as diff.patch.
+            write_file("changed-paths.json", _dump(sorted(observed_changes)))
 
         resolved_gates: list[GateResult] = []
         report_path_by_gate: dict[str, str] = {}

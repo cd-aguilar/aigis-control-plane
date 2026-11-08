@@ -61,4 +61,11 @@ class Sandbox(Protocol):
 
     def collect_diff(self) -> str: ...
 
+    def changed_paths(self) -> list[str]:
+        """Paths that differ from the base repo, observed on the filesystem
+        (never from the agent's tool log). Must come from the same
+        comparison as ``collect_diff``.
+        """
+        ...
+
     def destroy(self) -> None: ...

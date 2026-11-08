@@ -22,8 +22,10 @@ from __future__ import annotations
 import difflib
 import os
 import shutil
+import stat
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from aigis.sandbox.base import CommandResult
@@ -62,7 +64,11 @@ class LocalCowSandbox:
         tmp = Path(tempfile.mkdtemp(prefix="aigis-sandbox-"))
         # copytree requires the destination not to already exist.
         workdir = tmp / "workspace"
-        shutil.copytree(self.base_repo_path, workdir)
+        # symlinks=True: a symlink in the base repo stays a symlink. The
+        # default (False) would copy the *target's* content -- possibly a
+        # host file outside the repo -- into the workspace, and the observed
+        # change set (changed_paths) would then see a spurious type change.
+        shutil.copytree(self.base_repo_path, workdir, symlinks=True)
         self._workdir = workdir
 
     def _resolve(self, path: str) -> Path:
@@ -115,7 +121,18 @@ class LocalCowSandbox:
         )
 
     def collect_diff(self) -> str:
-        return _unified_diff_tree(self.base_repo_path, self.workdir)
+        return _render_diff(_tree_changes(self.base_repo_path, self.workdir))
+
+    def changed_paths(self) -> list[str]:
+        """Every path that differs between the base repo and the workspace,
+        observed on the filesystem -- not taken from the agent's tool log
+        (P0 D4). Additions, deletions, content changes and type changes
+        (file <-> symlink <-> directory) all count; a rename is a deletion
+        plus an addition. Symlinks are compared as links (their target
+        string), never followed. Same comparison as ``collect_diff``, so
+        ``diff.patch`` and this list cannot diverge.
+        """
+        return [change.path for change in _tree_changes(self.base_repo_path, self.workdir)]
 
     def destroy(self) -> None:
         if self._workdir is not None:
@@ -144,69 +161,123 @@ def _apply_resource_limits() -> None:
 
 
 # Directories/suffixes that are execution byproducts, not agent-authored
-# changes -- excluded from the diff so e.g. a __pycache__/*.pyc created by
-# run_command('python', ...) doesn't show up as a "changed file", and so a
-# binary .pyc never reaches the UTF-8 decode below.
+# changes -- excluded from BOTH the diff and changed_paths() (one shared
+# comparison, below), so e.g. a __pycache__/*.pyc or .pytest_cache created
+# by running pytest never shows up as a changed file or as an
+# untracked_modification, and a binary .pyc never reaches the UTF-8 decode.
 _DIFF_IGNORED_DIR_NAMES = {"__pycache__", ".pytest_cache", ".ruff_cache"}
 _DIFF_IGNORED_SUFFIXES = {".pyc", ".pyo"}
 
 
-def _is_diff_ignored(path: Path, root: Path) -> bool:
-    if path.suffix in _DIFF_IGNORED_SUFFIXES:
-        return True
-    return any(part in _DIFF_IGNORED_DIR_NAMES for part in path.relative_to(root).parts)
+@dataclass(frozen=True)
+class _Entry:
+    """One path as seen with ``lstat`` -- never following a symlink.
 
-
-def _read_text_or_none(path: Path) -> str | None:
-    """None means "binary, or otherwise not diffable as text" -- distinct
-    from "" (an empty file), which is a normal diffable case.
+    ``kind`` is "file", "symlink" or "other" (fifo, socket, device...).
+    ``payload`` is the file's bytes, the symlink's target string, or b"".
     """
-    if not path.is_file():
+
+    kind: str
+    payload: bytes | str
+
+
+@dataclass(frozen=True)
+class _Change:
+    path: str
+    base: _Entry | None
+    work: _Entry | None
+
+
+def _is_ignored(rel_parts: tuple[str, ...]) -> bool:
+    if Path(rel_parts[-1]).suffix in _DIFF_IGNORED_SUFFIXES:
+        return True
+    return any(part in _DIFF_IGNORED_DIR_NAMES for part in rel_parts)
+
+
+def _snapshot(root: Path) -> dict[str, _Entry]:
+    """Every non-directory entry under ``root``, keyed by POSIX relative
+    path. ``os.walk(followlinks=False)`` plus ``lstat``: a symlink -- to a
+    file or to a directory, inside or outside the tree -- is recorded as a
+    link and never opened, so neither the diff nor the hashes can pull in
+    the content of a host file it points at.
+    """
+    entries: dict[str, _Entry] = {}
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        current = Path(dirpath)
+        rel_dir = current.relative_to(root).parts
+        # prune ignored directories; a symlinked directory is not descended
+        # into by os.walk, but it IS a change we must record below.
+        dirnames[:] = [d for d in dirnames if d not in _DIFF_IGNORED_DIR_NAMES]
+        for name in [*filenames, *(d for d in dirnames if (current / d).is_symlink())]:
+            rel_parts = (*rel_dir, name)
+            if _is_ignored(rel_parts):
+                continue
+            full = current / name
+            st = full.lstat()
+            if stat.S_ISLNK(st.st_mode):
+                entry = _Entry("symlink", os.readlink(full))
+            elif stat.S_ISREG(st.st_mode):
+                entry = _Entry("file", full.read_bytes())
+            else:
+                entry = _Entry("other", b"")
+            entries["/".join(rel_parts)] = entry
+    return entries
+
+
+def _tree_changes(base: Path, workdir: Path) -> list[_Change]:
+    """The single base-vs-workspace comparison behind both ``collect_diff``
+    and ``changed_paths`` -- the plain-filesystem equivalent of
+    ``git status``/``git diff`` for a base repo that may not itself be a
+    git repository (the toy repos this sandbox runs against).
+    """
+    base_entries = _snapshot(base)
+    work_entries = _snapshot(workdir)
+    changes: list[_Change] = []
+    for rel_path in sorted(base_entries.keys() | work_entries.keys()):
+        before = base_entries.get(rel_path)
+        after = work_entries.get(rel_path)
+        if before != after:
+            changes.append(_Change(rel_path, before, after))
+    return changes
+
+
+def _decode(entry: _Entry | None) -> str | None:
+    if entry is None or entry.kind != "file":
         return None
     try:
-        return path.read_text(encoding="utf-8")
+        return entry.payload.decode("utf-8")  # type: ignore[union-attr]
     except UnicodeDecodeError:
         return None
 
 
-def _unified_diff_tree(base: Path, workdir: Path) -> str:
-    """Unified diff of every file that differs between ``base`` and
-    ``workdir``, concatenated into one patch string -- the plain-filesystem
-    equivalent of ``git diff`` for a base repo that may not itself be a git
-    repository (the toy repos this sandbox runs against, per CLAUDE.md's
-    "repo de juguete local").
-    """
-    base_files = {
-        p.relative_to(base).as_posix()
-        for p in base.rglob("*")
-        if p.is_file() and not _is_diff_ignored(p, base)
-    }
-    work_files = {
-        p.relative_to(workdir).as_posix()
-        for p in workdir.rglob("*")
-        if p.is_file() and not _is_diff_ignored(p, workdir)
-    }
+def _describe(entry: _Entry | None) -> str:
+    if entry is None:
+        return "absent"
+    if entry.kind == "symlink":
+        return f"symlink -> {entry.payload}"
+    return entry.kind
 
+
+def _render_diff(changes: list[_Change]) -> str:
     chunks: list[str] = []
-    for rel_path in sorted(base_files | work_files):
-        base_text = _read_text_or_none(base / rel_path)
-        work_text = _read_text_or_none(workdir / rel_path)
-
-        if base_text is None or work_text is None:
-            base_bytes = (base / rel_path).read_bytes() if (base / rel_path).is_file() else None
-            work_bytes = (
-                (workdir / rel_path).read_bytes() if (workdir / rel_path).is_file() else None
+    for change in changes:
+        rel_path = change.path
+        if "symlink" in (getattr(change.base, "kind", None), getattr(change.work, "kind", None)):
+            # Describe the link, never its target's content.
+            chunks.append(
+                f"Symlink change {rel_path}: {_describe(change.base)} => {_describe(change.work)}"
             )
-            if base_bytes != work_bytes:
-                chunks.append(f"Binary files a/{rel_path} and b/{rel_path} differ")
             continue
-
-        base_lines = base_text.splitlines(keepends=True)
-        work_lines = work_text.splitlines(keepends=True)
-        if base_lines == work_lines:
+        base_text = _decode(change.base)
+        work_text = _decode(change.work)
+        if base_text is None or work_text is None:
+            chunks.append(f"Binary files a/{rel_path} and b/{rel_path} differ")
             continue
         diff = difflib.unified_diff(
-            base_lines, work_lines, fromfile=f"a/{rel_path}", tofile=f"b/{rel_path}"
+            base_text.splitlines(keepends=True),
+            work_text.splitlines(keepends=True),
+            fromfile=f"a/{rel_path}",
+            tofile=f"b/{rel_path}",
         )
         chunks.append("".join(diff))
     return "\n".join(chunks)

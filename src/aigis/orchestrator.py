@@ -64,10 +64,16 @@ def run_task(
         state = TaskState(run_id=run_id, task_id=contract.task_id)
         runtime.run(state)
 
+        # Observed BEFORE the gates run (P0 D4): pytest/ruff leave their own
+        # byproducts in the workspace (caches, the pytest report until D3),
+        # and those are the control plane's writes, not the agent's.
+        # diff.patch and observed_changes come from the same comparison.
+        observed_changes = sandbox.changed_paths()
+        diff = sandbox.collect_diff()
+
         gate_results = [
             gate.run(sandbox) for gate in gates if gate.gate_name in contract.required_gates
         ]
-        diff = sandbox.collect_diff()
     finally:
         sandbox.destroy()
 
@@ -93,10 +99,15 @@ def run_task(
         gate_results=gate_results,
         environment=environment,
         diff=diff,
+        observed_changes=observed_changes,
     )
 
     decision = DecisionEngine().decide(
-        run_id=run_id, contract=contract, state=state, gate_results=gate_results
+        run_id=run_id,
+        contract=contract,
+        state=state,
+        gate_results=gate_results,
+        observed_changes=observed_changes,
     )
     writer.write_decision(run_id, decision)
 
