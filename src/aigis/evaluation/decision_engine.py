@@ -30,7 +30,9 @@ suficiente, DENY o NEEDS_HUMAN — nunca se concede autoridad implícita"):
    An observed change to a ``protected_path`` (a test, test/lint config)
    is ``protected_path_modified``: ``scope_ok`` is False -> FAIL. The
    gates never saw that change (they ran on the base version), so the
-   verdict does not depend on what it did.
+   verdict does not depend on what it did. A gate that FAILs on a
+   control-plane grading rule (``GateResult.rule_violations``: no test
+   passed, ``gate_outcome_changed``) names that rule in the FAIL reason.
 3. Otherwise, if any of the six booleans in the Decision formula
    (``contract_valid AND policy_ok AND tests_pass AND lint_pass AND
    scope_ok AND resource_limits_ok``) is False → ``FAIL``. This is a
@@ -182,6 +184,9 @@ class DecisionEngine:
                 reason += f"; out_of_scope_change: {out_of_scope}"
             if protected:
                 reason += f"; protected_path_modified: {protected}"
+            for gate in gate_results:
+                if gate.rule_violations:
+                    reason += f"; {gate.gate_name}: {gate.rule_violations}"
             if len(observed) > contract.max_files_changed:
                 reason += (
                     f"; max_files_changed: {len(observed)} observed > "

@@ -112,7 +112,9 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 - **The graded code still runs inside the gate.** Since D3, tests,
   pytest/ruff config and any `conftest.py` are protected (read-only for
   the agent, always taken from the base repo when the gates run) and the
-  pytest report is written outside the workspace. But pytest imports the
+  pytest report is written outside the workspace. A skip/xfail produced
+  by the code under test, or a `noqa` the agent wrote, no longer passes
+  the gates. But pytest imports the
   agent's code, so that code runs in the gate's process and could still
   tamper with the run from the inside. Closing that needs process isolation
   between grader and graded code; it is a documented limit, not a guarantee
@@ -162,7 +164,7 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > rate, 4.9 average iterations/tool calls, 10.6s average latency, $0.30
 > total cost, $0.038 cost-to-pass — reported honestly as N=8 (one run each),
 > not a statistically significant benchmark.
-> **340 tests collected (Linux: 311 passed, 28 xfailed P0 regressions,
+> **359 tests collected (Linux: 330 passed, 28 xfailed P0 regressions,
 > 1 skipped), `ruff check` clean.** A minimal CI workflow (pytest + ruff on
 > push/PR to `main`) is defined in `.github/workflows/ci.yml`.
 >

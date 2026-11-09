@@ -42,8 +42,18 @@ class GateResult(BaseModel):
         "together with passed=True.",
     )
 
+    rule_violations: list[str] = Field(
+        default_factory=list,
+        description="Control-plane grading rules this run broke even though "
+        "the tool itself may have reported success (P0 D3 hardening), e.g. "
+        "'no_test_passed' or 'gate_outcome_changed: <nodeid> (passed -> "
+        "skipped)'. Never set together with passed=True.",
+    )
+
     @model_validator(mode="after")
     def _infrastructure_error_never_passes(self) -> GateResult:
         if self.infrastructure_error is not None and self.passed:
             raise ValueError("a gate with an infrastructure_error cannot have passed")
+        if self.rule_violations and self.passed:
+            raise ValueError("a gate with rule_violations cannot have passed")
         return self

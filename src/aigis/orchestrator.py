@@ -18,13 +18,14 @@ from __future__ import annotations
 import shutil
 import tempfile
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from aigis.agent.runtime import AgentRuntime
 from aigis.domain import Decision, EnvironmentMetadata, Evidence, TaskContract, TaskState
 from aigis.evaluation.decision_engine import DecisionEngine
-from aigis.evaluation.gates import PytestGate, QualityGate, RuffGate
+from aigis.evaluation.gates import GateContext, PytestGate, QualityGate, RuffGate
 from aigis.evidence.bundle import EvidenceBundleWriter
 from aigis.policy.engine import PolicyEngine
 from aigis.policy.executor import SandboxedToolExecutor
@@ -57,6 +58,24 @@ def run_task(
     ``DecisionEngine``'s handling of missing required gates).
     """
     run_id = run_id or f"run-{uuid.uuid4().hex[:12]}"
+    selected = [gate for gate in gates if gate.gate_name in contract.required_gates]
+
+    # D3 hardening: gates that compare against the base (PytestGate's
+    # skip/xfail/xpass rule) take their baseline now, in a separate clean
+    # copy of the base, before the agent exists. Neither the agent nor its
+    # code ever runs in that copy, and base tests that write files cannot
+    # show up as the agent's changes.
+    contexts: dict[str, GateContext] = {}
+    for gate in selected:
+        collect = getattr(gate, "collect_baseline", None)
+        if collect is None:
+            continue
+        baseline_sandbox: Sandbox = sandbox_factory(base_repo)
+        baseline_sandbox.create(exclude=contract.forbidden_paths)
+        try:
+            contexts[gate.gate_name] = collect(baseline_sandbox)
+        finally:
+            baseline_sandbox.destroy()
 
     sandbox: Sandbox = sandbox_factory(base_repo)
     # P0 D2: forbidden paths are not copied into the workspace at all.
@@ -80,12 +99,24 @@ def run_task(
         # the sandbox holds the base repo plus the agent's changes outside
         # protected_paths, and every report lands in a directory outside it.
         sandbox.start_evaluation(protected=contract.protected_paths)
+        discarded_changes = list(getattr(sandbox, "discarded_changes", []))
+        # RuffGate lints these with --ignore-noqa. Protected paths are
+        # excluded: the evaluation workspace holds their base version.
+        agent_changed = tuple(
+            path for path in observed_changes if not contract.is_protected(path)
+        )
         report_dir = Path(tempfile.mkdtemp(prefix="aigis-gate-reports-"))
         try:
             gate_results = [
-                gate.run(sandbox, report_dir=report_dir)
-                for gate in gates
-                if gate.gate_name in contract.required_gates
+                gate.run(
+                    sandbox,
+                    report_dir=report_dir,
+                    context=replace(
+                        contexts.get(gate.gate_name, GateContext()),
+                        agent_changed_files=agent_changed,
+                    ),
+                )
+                for gate in selected
             ]
         finally:
             shutil.rmtree(report_dir, ignore_errors=True)
@@ -116,6 +147,7 @@ def run_task(
         diff=diff,
         observed_changes=observed_changes,
         excluded_paths=excluded_paths,
+        discarded_changes=discarded_changes,
     )
 
     decision = DecisionEngine().decide(

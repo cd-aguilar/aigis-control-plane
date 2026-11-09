@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 
 from aigis.domain.enums import GateType
-from aigis.evaluation.gates import _PYTEST_REPORT_FILE, PytestGate, RuffGate
+from aigis.domain.quality_gate import GateResult
+from aigis.evaluation.gates import _PYTEST_REPORT_FILE, GateContext, PytestGate, RuffGate
 from aigis.sandbox.base import CommandResult
 from aigis.sandbox.local_cow import LocalCowSandbox
 
@@ -112,6 +113,96 @@ def test_pytest_gate_timeout_fails_without_looking_for_a_report() -> None:
 
     assert result.passed is False
     assert result.details["timed_out"] is True
+
+
+# --- No silent pass (D3 hardening) ------------------------------------------------
+
+
+def _report_sandbox(report: dict, exit_code: int = 0) -> FakeSandbox:
+    return FakeSandbox(
+        command_result=CommandResult(exit_code=exit_code, stdout="", stderr=""),
+        files={_PYTEST_REPORT_FILE: json.dumps(report)},
+    )
+
+
+def _skip_report(*, passed: int = 1) -> dict:
+    tests = [{"nodeid": "tests/t.py::test_skip", "outcome": "skipped"}]
+    tests += [{"nodeid": f"tests/t.py::test_ok{i}", "outcome": "passed"} for i in range(passed)]
+    return {"exitcode": 0, "summary": {"passed": passed, "skipped": 1}, "tests": tests}
+
+
+def test_pytest_gate_zero_passed_tests_is_not_a_pass() -> None:
+    result = PytestGate().run(_report_sandbox({"exitcode": 0, "summary": {"total": 0}}))
+    assert result.passed is False
+    assert result.rule_violations == ["no_test_passed"]
+
+
+def test_pytest_gate_errors_are_not_a_pass() -> None:
+    report = {"exitcode": 0, "summary": {"passed": 1, "error": 1}}
+    assert PytestGate().run(_report_sandbox(report)).passed is False
+
+
+def test_pytest_gate_without_baseline_any_skip_fails() -> None:
+    result = PytestGate().run(_report_sandbox(_skip_report()))
+    assert result.passed is False
+    assert result.rule_violations == [
+        "gate_outcome_changed: tests/t.py::test_skip (absent -> skipped)"
+    ]
+
+
+def test_pytest_gate_skip_matching_the_baseline_passes() -> None:
+    context = GateContext(
+        baseline={"tests/t.py::test_skip": "skipped", "tests/t.py::test_ok0": "failed"}
+    )
+    result = PytestGate().run(_report_sandbox(_skip_report()), context=context)
+    assert result.passed is True
+    assert result.rule_violations == []
+
+
+def test_pytest_gate_baseline_xfail_turned_xpass_fails() -> None:
+    report = {
+        "exitcode": 0,
+        "summary": {"passed": 1, "xpassed": 1},
+        "tests": [
+            {"nodeid": "tests/t.py::test_ok", "outcome": "passed"},
+            {"nodeid": "tests/t.py::test_x", "outcome": "xpassed"},
+        ],
+    }
+    context = GateContext(
+        baseline={"tests/t.py::test_ok": "passed", "tests/t.py::test_x": "xfailed"}
+    )
+    result = PytestGate().run(_report_sandbox(report), context=context)
+    assert result.rule_violations == [
+        "gate_outcome_changed: tests/t.py::test_x (xfailed -> xpassed)"
+    ]
+
+
+def test_pytest_gate_summary_counting_unlisted_skips_fails_closed() -> None:
+    report = {"exitcode": 0, "summary": {"passed": 1, "skipped": 2}, "tests": []}
+    result = PytestGate().run(_report_sandbox(report), context=GateContext(baseline={}))
+    assert result.passed is False
+    assert any("missing from the report" in v for v in result.rule_violations)
+
+
+def test_pytest_gate_baseline_error_is_infrastructure_error() -> None:
+    result = PytestGate().run(
+        _report_sandbox(_skip_report()), context=GateContext(baseline_error="pytest exited 127")
+    )
+    assert result.passed is False
+    assert result.infrastructure_error is not None
+    assert "baseline unavailable" in result.infrastructure_error
+
+
+def test_pytest_gate_collect_baseline_without_report_is_an_error() -> None:
+    sandbox = FakeSandbox(command_result=CommandResult(exit_code=127, stdout="", stderr=""))
+    context = PytestGate().collect_baseline(sandbox)
+    assert context.baseline is None
+    assert context.baseline_error == "pytest exited 127 without a usable report"
+
+
+def test_gate_result_rule_violations_never_pass() -> None:
+    with pytest.raises(ValueError):
+        GateResult(gate_name="pytest", gate_type=GateType.TEST, passed=True, rule_violations=["x"])
 
 
 # --- RuffGate ------------------------------------------------------------------

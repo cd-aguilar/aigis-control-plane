@@ -4,8 +4,18 @@ Per ARCHITECTURE.md section 13, the on-disk layout is:
 
     evidence/<run-id>/
         manifest.json  task.json  trace.jsonl  state.json  events.jsonl
-        diff.patch  test-report.json  lint-report.json  security-report.json
+        diff.patch  changed-paths.json  excluded-paths.json
+        discarded-changes.json
+        test-report.json  lint-report.json  security-report.json
         environment.json  hashes.json  decision.json
+
+The three P0 artifacts, each written only when the caller passes it:
+``changed-paths.json`` (D4) is what the Decision Engine's ``scope_ok`` and
+``max_files_changed`` were computed from; ``excluded-paths.json`` (D2) is
+what the sandbox did not copy from the base repo, with the reason;
+``discarded-changes.json`` (D3) is which of the agent's changes did not
+reach the evaluation workspace (protected paths, symlinks), with the
+reason.
 
 This module is the only place that touches the real filesystem for evidence
 purposes — everything it writes comes from domain models or ``GateResult``s
@@ -65,6 +75,7 @@ class EvidenceBundleWriter:
         diff: str,
         observed_changes: list[str] | None = None,
         excluded_paths: list[dict[str, str]] | None = None,
+        discarded_changes: list[dict[str, str]] | None = None,
     ) -> Evidence:
         run_dir = self.base_dir / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -101,6 +112,13 @@ class EvidenceBundleWriter:
             write_file(
                 "excluded-paths.json",
                 _dump(sorted(excluded_paths, key=lambda entry: entry["path"])),
+            )
+        if discarded_changes is not None:
+            # Which of the agent's changes never reached the evaluation
+            # workspace (P0 D3): protected paths and symlinks, with the reason.
+            write_file(
+                "discarded-changes.json",
+                _dump(sorted(discarded_changes, key=lambda entry: entry["path"])),
             )
 
         resolved_gates: list[GateResult] = []

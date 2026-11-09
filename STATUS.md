@@ -1,13 +1,15 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 9 nov 2026 — P0 de seguridad sigue abierto (bypass de scope vía `run_command`, ver sección dedicada), **5 de 9 criterios de cierre cumplidos** (2, 4, 5, 7, 9). Hechos: D4 (`d9933bc`), D2 (`1ac97c0`) y D3 (`9279473`), más el commit 6b de docs. Siguiente: D1 (commit 7). CI #4 verde sobre `9279473`. Tests en Windows: 305 passed, 28 xfailed, 7 skipped; Linux (contenedor): 311 passed, 28 xfailed, 1 skipped; ruff limpio. Anterior: 9 nov 2026, antes del 6b._
+_Última actualización: 9 nov 2026 — P0 de seguridad sigue abierto (bypass de scope vía `run_command`, ver sección dedicada), **5 de 9 criterios de cierre cumplidos** (2, 4, 5, 7, 9). Hechos: D4 (`d9933bc`), D2 (`1ac97c0`), D3 (`9279473`), docs 6b (`9165cf7`) y el endurecimiento de D3 (commit 6c, criterio 5 desmarcado y re-marcado en ese commit). Siguiente: S07/S08 a `security_suite.py` + `contract_version` 2.0, después push y D1 (commit 7). CI #4 verde sobre `9279473`. Tests en Windows: 324 passed, 28 xfailed, 7 skipped; Linux (contenedor): 330 passed, 28 xfailed, 1 skipped; ruff limpio. Anterior: 9 nov 2026, antes del 6c._
 
 ### Qué sigue (orden del plan, numeración de `next-tasks`)
 
 1. ~~Push de `cc74e83` + `1ac97c0`~~ — hecho, CI #3 verde sobre `e894f38` (27 s).
 2. ~~Decisión de Dario antes de D3~~ — **resuelta el 9/11: opción (b)**. `test_run_command_cannot_leak_a_forbidden_path` se retira en D1 (ver "Pendiente de Dario").
 3. ~~Commit 6 — D3~~ — hecho, CI #4 verde sobre `9279473` (34 s).
-   ~~Commit 6b — docs~~ — hecho (docs desactualizados desde D4/D2/D3). Pendiente: push y CI (lo hace Dario).
+   ~~Commit 6b — docs~~ — hecho (`9165cf7`, docs desactualizados desde D4/D2/D3).
+   ~~Commit 6c — sin PASS silencioso en los gates~~ — hecho (ver la entrada "Commit 6c").
+   **Siguiente:** commit `test` con S07/S08 movidos a `security_suite.py` y `contract_version` 2.0. Después, push y CI (lo hace Dario).
 4. **Commit 7 — D1:** `run_tests`/`run_lint` en lugar de `run_command`, con la allowlist genérica vacía. Saca de xfail los tests 1-3 y S06, y también los 2 xfail que quedan en `test_executor.py`. Cubre el criterio 3.
 5. **Commit 8 — D5:** imagen propia por digest, docker por defecto, `--unsafe-local`, y resolver el bug Docker/UID. Saca de xfail los tests 13-15. Cubre los criterios 1 y 6.
 6. **Commit 9 — D6** (P1, test 16). **Commit 10:** re-correr el benchmark después del fix (lo corre Dario con su key). Cubre el criterio 8.
@@ -142,7 +144,7 @@ Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada captu
 - [x] 2. El PoC de `P0-review.md`, adaptado, da **FAIL o DENY**, nunca PASS, y queda como test de integración. — ✅ commit 5 (D2): `tests/test_p0_command_bypass.py::test_run_command_bypass_no_longer_yields_pass` salió de xfail. La decisión es FAIL (`untracked_modification: ['tests/test_calculator.py']`, desde D4) y el secreto ya no vuelve por stdout porque `secrets/` no se copia al workspace (D2). Queda como test de integración normal: si vuelve a dar PASS, la suite se rompe.
 - [ ] 3. Con la policy por defecto, ningún tool del agente acepta un ejecutable ni argumentos arbitrarios. (D1)
 - [x] 4. `scope_ok` y `max_files_changed` se calculan solo desde cambios observados, con un test que prueba que el registro del agente no puede ampliarlos. (D4) — ✅ commit 4: `DecisionEngine.decide(observed_changes=...)` obligatorio, sin fallback al log; `test_08_max_files_changed_counts_observed_changes` y `test_08_tool_log_cannot_widen_observed_scope`.
-- [x] 5. Ningún insumo de un gate (tests protegidos, config, reporte) puede escribirse desde el workspace del agente. (D3) — ✅ commit 6: el workspace de evaluación se arma desde la base, los protegidos del agente se pierden, `patch_file` sobre un protegido da DENY `PATH-004` y el reporte se escribe fuera del workspace. **Límite que queda abierto y documentado, no cubierto por este criterio:** el código del agente corre dentro del proceso del gate (pytest importa `src/`) y puede alterar la corrida desde adentro (`docs/SECURITY.md`, "Insumos de los gates").
+- [x] 5. Ningún insumo de un gate (tests protegidos, config, reporte) puede escribirse desde el workspace del agente. (D3) — ✅ commit 6 + commit 6c: el workspace de evaluación se arma desde la base, los protegidos del agente se pierden, `patch_file` sobre un protegido da DENY `PATH-004` y el reporte se escribe fuera del workspace. **Desmarcado el 9/11** (Dario reprodujo dos bypasses del gate anteriores a D3: skip/xfail desde `src/` con exit 0, y `noqa` escrito por el agente) y **re-marcado en el 6c**, con evidencia: `tests/test_p0_regressions.py::test_d3h_skip_from_src_with_no_other_test_is_not_a_pass`, `::test_d3h_skip_or_xfail_from_src_fails_on_the_baseline_rule` y `::test_d3h_noqa_written_by_the_agent_does_not_silence_ruff` (más los controles `test_d3h_control_*`). **Límite que queda abierto y documentado, no cubierto por este criterio:** el código del agente corre dentro del proceso del gate (pytest importa `src/`) y puede alterar la corrida desde adentro (`docs/SECURITY.md`, "Insumos de los gates").
 - [ ] 6. El default de la CLI es docker con imagen por digest; local solo con un flag explícito, registrado en la evidencia. (D5)
 - [x] 7. La documentación no contiene afirmaciones no verificadas ("unique", "tamper-proof", "production-ready", "inmutable", "network disabled" sin calificar), verificable con `grep`. (commits 2 y 2b) — ✅ **8 nov 2026, re-marcado en el commit 2b.** El `[x]` de `1621f2b` estaba de más: el grep de ese commit cubría solo `README.md` y `docs/*.md`, y `CLAUDE.md` (público) seguía diciendo "sin red" y "OverlayFS" sin calificar. Comando ampliado, sobre todos los `*.md` versionados salvo `docs/security/` y `claude/`:
   `git ls-files '*.md' | grep -v -E '^(docs/security/|claude/)' | xargs grep -n -i -E "\bunique\b|tamper-proof|production-ready|inmutable|immutable|network disabled|no network|\bsin red\b|overlayfs"`
@@ -264,7 +266,7 @@ Pendiente, fuera de D3 (para decidir con Dario):
 - `TaskContract.contract_version` sigue en `"1.0"` aunque el esquema sumó `protected_paths`. Los contratos viejos con `tests/` en `allowed_paths` ahora fallan la validación con un mensaje claro.
 
 **Commit 6b — docs: bring README/SECURITY/THREAT-MODEL/EVALUATION/ARCHITECTURE up to D4/D2/D3 (9 nov 2026)**
-Hash: se anota en el commit siguiente. Solo docs, sin cambios de código. Lo que seguía describiendo como abierto algo que D4, D2 o D3 ya cerraron:
+Hash: `9165cf7`. _Nota: el "6b" que pidió Dario era otro (el fix de los dos bypasses, que pasó a ser el 6c); Dario aprobó este commit de docs tal cual._ Solo docs, sin cambios de código. Lo que seguía describiendo como abierto algo que D4, D2 o D3 ya cerraron:
 - **Avisos del P0** (`README.md`, `docs/SECURITY.md`, `docs/THREAT-MODEL.md`, nota del diagrama en `ARCHITECTURE.md` §5): pasan de "lee prohibidos, escribe sin quedar registrado, reescribe los tests y da PASS" a lo que ya está cerrado (D2, D4, D3; el PoC da FAIL) y lo que sigue abierto (código arbitrario por `run_command`, D1; host y red visibles en modo local, D5).
 - `README.md`: "Scope is computed from the agent's tool log" → scope observado en el workspace, con el límite de las escrituras fuera del workspace. Conteo: 340 recolectados (Linux 311 / 28 xfailed / 1 skipped).
 - `docs/SECURITY.md`: `LocalCowSandbox` ya no copia los prohibidos (D2, con los symlinks excluidos y `excluded-paths.json`); `diff.patch` y `changed-paths.json` salen de la misma comparación y el Decision Engine usa la lista observada (D4); los protegidos en el orden de reglas del Policy Engine; `changed-paths.json`/`excluded-paths.json` en la lista del Evidence Bundle.
@@ -275,6 +277,42 @@ Hash: se anota en el commit siguiente. Solo docs, sin cambios de código. Lo que
 - **Verificación nueva (9/11, Windows), base del texto sobre secretos:** con `create(exclude=["secrets/"])`, `run_command python -c "open('<repo base>/secrets/k.txt')"` devuelve el secreto. D2 saca los prohibidos del workspace, no del host; en modo local, el código ejecutado los sigue leyendo desde el repo base por su ruta absoluta. No es un hallazgo nuevo (es el "ve el filesystem del host" del P0, que cierra D5), pero ningún doc lo decía así. No se agregó test: lo cubre D5 (tests 13-15).
 - Criterio 7: el grep ampliado da las mismas coincidencias calificadas.
 Tests: sin cambios de código | ruff: clean | CI: pendiente del push.
+
+**Commit 6c — fix(gates): no-silent-pass rules (D3 hardening) (9 nov 2026)**
+Hash: se anota en el commit siguiente. Dos bypasses del gate que reprodujo Dario. Los dos existían antes de D3, pero bloquean el criterio 5, que se desmarcó al empezar este commit y se vuelve a marcar al terminarlo:
+1. **Skip desde `src/`.** `if "PYTEST_CURRENT_TEST" in os.environ: pytest.skip()` en el código bajo prueba → pytest exit 0, `exitcode` 0 y summary `{skipped: 1, total: 1}` → `PytestGate` daba `passed=True` sin correr ningún test. Lo mismo con `pytest.xfail()`.
+2. **`noqa` del agente.** `# ruff: noqa` (archivo) o `# noqa` (línea) en `src/` → ruff exit 0 sobre un F401 real.
+
+Reproducidos los dos el 9/11 antes del fix (pytest y ruff reales).
+
+- **`PytestGate` — opción elegida: línea base de la base, no `allowed_skips`.** Para PASS exige `summary.passed >= 1`, `failed == 0` y `error == 0` (clave verificada contra pytest-json-report real), y que todo test que termina en skipped, xfailed o xpassed haya tenido **el mismo** resultado en la base. Si no, FAIL `gate_outcome_changed: <nodeid> (<base> -> <ahora>)`.
+  - **Por qué la línea base:** `allowed_skips` es un número. No dice *cuál* test se saltea, así que el agente podría cambiar un skip legítimo por otro que le conviene sin pasarse del cupo. Además, cada contrato con un skip legítimo tendría que declararlo a mano. La línea base compara test por test y no agrega campos al contrato.
+  - **Cómo se arma:** `PytestGate.collect_baseline()` corre los mismos tests en un **sandbox aparte**, creado con el mismo `sandbox_factory` y la misma exclusión de prohibidos (D2), **antes** de que exista el agente, y lo destruye antes de que el agente arranque. El reporte va a un temp dir propio, que se borra enseguida.
+  - **Por qué un sandbox aparte y no el del agente antes de su turno:** un test de la base que escribe un archivo aparecería como cambio del agente (`untracked_modification`).
+  - **Costo:** una corrida extra de pytest y una copia más por tarea.
+- **Además de lo pedido (a revisar):**
+  - un test de la base que **desaparece** de la corrida (módulo salteado al importarse con `pytest.skip(allow_module_level=True)` desde `src/`) también da `gate_outcome_changed (... -> absent)`. Es el mismo bypass en otra forma, y sin esa regla pasaba (verificado con un mutation check);
+  - si el summary cuenta más skipped/xfailed/xpassed que los que lista el reporte → FAIL;
+  - **sin línea base** (llamada directa al gate, sin contexto) → cualquier skip/xfail/xpass da FAIL;
+  - **línea base que no se pudo tomar** (pytest sin reporte) → `infrastructure_error` → NEEDS_HUMAN. Sin ella no hay forma de distinguir un skip legítimo de uno del agente;
+  - **xfailed en la base → xpassed ahora** también es `gate_outcome_changed` (lectura literal de "outcome que en la base no lo era").
+- **`RuffGate`:** chequeo normal sobre `.` + `ruff check --ignore-noqa --force-exclude` sobre los archivos que cambió el agente (cambios observados fuera de `protected_paths`, con extensión `.py`/`.pyi`/`.ipynb`, que siguen existiendo en el workspace de evaluación; las rutas van con prefijo `./` para que ninguna se lea como opción). El resultado es la unión deduplicada. En un archivo cambiado, la corrida estricta reporta todo lo de la normal y más, así que no hace falta filtrar por ruta (filtrar por sufijo confundía `a.py` en la raíz con `src/a.py`). Verificado: `--ignore-noqa` anula también el `# ruff: noqa` de archivo. **Consecuencia buscada, a revisar:** en un archivo que tocó el agente, lo que la base silenciaba con `noqa` también se reporta. El reporte de lint suma `ignore_noqa_files`.
+- **`GateContext`** (nuevo, en `gates.py`): línea base, error de línea base y archivos cambiados por el agente. Lo arma el orquestador **por corrida** y se pasa a `gate.run(..., context=)`. No se guarda en el gate, porque `DEFAULT_GATES` son instancias compartidas entre corridas.
+- **`GateResult.rule_violations`** (nuevo, con validador: incompatible con `passed=True`). `DecisionEngine` lo agrega a la razón del FAIL (`; pytest: ['no_test_passed', 'gate_outcome_changed: ...']`).
+- **Evidencia:** `discarded-changes.json` (lo que guarda `sandbox.discarded_changes`) entra al bundle, a `manifest.json` y a `hashes.json`. El docstring de `bundle.py` lista los tres artefactos del P0. También se actualizaron `ARCHITECTURE.md` §13 y la lista de `SECURITY.md`.
+- **Docs:** `SECURITY.md` ("Sin PASS silencioso", y el límite general reformulado: las reglas cierran los casos baratos, no el monkeypatch de `_pytest`, que necesita D5 y tests ocultos), README, THREAT-MODEL (Grader tampering) y ARCHITECTURE §24.
+- Tests nuevos (19):
+  - **e2e** en `tests/test_p0_regressions.py` (`test_d3h_*`): skip con un solo test, skip/xfail con un test vecino que pasa, módulo salteado al importarse, `noqa` de línea y de archivo, y deleción de un `.py` que no se le pasa a ruff;
+  - **controles:** skip legítimo en la base → PASS; `noqa` de línea y de archivo en la base → siguen silenciando;
+  - **bundle:** `discarded-changes.json` en `manifest.json` y `hashes.json`;
+  - **unitarios** en `tests/evaluation/test_gates.py`: cero passed, errores, skip sin línea base, skip igual que la base, xfail→xpass, summary con skips sin listar, error de línea base → infraestructura, `collect_baseline` sin reporte, y el validador de `GateResult`.
+- **Mutation checks:**
+  - con las reglas anuladas, fallan los 4 tests de bypass de pytest y los 2 de `noqa`;
+  - con la línea base ignorada, fallan los bypasses (cambia el motivo) y el control del skip legítimo, y el del módulo salteado da PASS.
+
+  Restaurado después.
+- No cambió el estado de ningún xfail: siguen 28.
+Tests: Windows 324 passed, 28 xfailed, 7 skipped; Linux (contenedor `python:3.11`, usuario no-root) 330 passed, 28 xfailed, 1 skipped. T01 y T05 reales siguen dando PASS | ruff: clean | CI: pendiente del push.
 
 **Pendiente de Dario:**
 - ~~Los dos documentos del P0~~ — **commiteados el 8 nov 2026** como `docs/security/P0-design.md` (diseño aprobado, tests §4, claims §7, criterios §8) y `docs/security/P0-review.md` (hallazgos H1-H11, clasificación de controles, PoC). El checklist de arriba pasa a reemplazarse por los 9 criterios del §8 en el commit siguiente.
