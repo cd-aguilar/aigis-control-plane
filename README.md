@@ -89,25 +89,18 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 
 ## Known limitations
 
-> **Open P0 security finding (since 2026-09-22), partly fixed.** What the
-> fix has closed so far: the agent has no generic command tool any more,
-> only `run_tests`/`run_lint` with fixed profiles and no free arguments,
-> and the generic allowlist is empty (D1); forbidden paths are no longer
-> copied into the sandbox (D2); a write that bypasses `patch_file` is
-> observed on the filesystem and fails the run (D4); tests, test/lint
-> config and the pytest report are protected and taken from the base repo
-> when the gates run (D3). The original proof of concept now ends in
-> `FAIL`, not `PASS`. Since D5 the default sandbox is a container with
-> no network and no view of the host (base repo included). What remains:
-> the agent's own code still runs — pytest imports what it wrote, in
-> `run_tests` and in the gate — so inside the container it can still
-> tamper with its own grading (e.g. patch `_pytest`) and whatever it
-> prints reaches the LLM. The post-fix benchmark (closing criterion 8) is
-> still to be run. Until then AIGIS **cannot claim** to verify a task
-> independently of the agent.
-> Findings: [`docs/security/P0-review.md`](docs/security/P0-review.md).
-> Fix design and closing criteria: [`docs/security/P0-design.md`](docs/security/P0-design.md).
-> Remaining failing regressions (xfail strict): `tests/test_p0_regressions.py`.
+> **P0 security finding: closed on 2026-11-09.** Opened 2026-09-22: an
+> allowlisted `run_command` (`python`) could read forbidden paths, write
+> outside scope unrecorded and rewrite the tests the gate graded, and the
+> run still ended in `PASS`. Fixed in six steps (D1-D6): no generic
+> command tool, forbidden paths kept out of the sandbox, gate inputs
+> protected, changes observed on the filesystem, docker by default,
+> security DENYs escalated. All 9 closing criteria are met with evidence,
+> including a post-fix benchmark (24/24 PASS in docker) — see
+> [`STATUS.md`](STATUS.md). Findings: [`docs/security/P0-review.md`](docs/security/P0-review.md);
+> design and criteria: [`docs/security/P0-design.md`](docs/security/P0-design.md);
+> regressions: `tests/test_p0_regressions.py`. Closing it does **not**
+> make the limits below go away.
 
 - **`--unsafe-local` is not a sandbox.** It runs the agent's code as
   host subprocesses: host filesystem and network visible. It is explicit,
@@ -129,8 +122,9 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
   the gates. But pytest imports the
   agent's code, so that code runs in the gate's process (and in the
   agent's own `run_tests`) and could still tamper with the run from the
-  inside; in local mode it also sees the host. Closing that needs process isolation
-  between grader and graded code; it is a documented limit, not a guarantee
+  inside (e.g. patch `_pytest`), even in the container. Closing that needs
+  process isolation between grader and graded code, or tests the agent
+  never sees; it is a documented limit, not a guarantee
   ([`docs/SECURITY.md`](docs/SECURITY.md)).
 - **Scope is observed only inside the workspace.** Since D4, `scope_ok`
   and `max_files_changed` come from comparing the workspace against the
@@ -140,9 +134,11 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
   observed.
 - **Evidence checksums are not tamper-evidence.** `hashes.json` is unsigned;
   signed receipts are planned, not built.
-- **The 8/8 benchmark is a pre-fix baseline** (local sandbox, N=1-3 per
-  task). It shows the mechanism runs end to end with a real LLM. It is not
-  evidence that the controls contain an adversarial agent.
+- **The benchmark measures the agent, not the controls.** The post-fix
+  run is 24/24 PASS (8 tasks × 3, docker) with zero DENYs: the agent never
+  tried anything out of scope, so no control had to act. Containment is
+  shown by the Security Suite (S01-S08) and the P0 regressions, with
+  scripted providers. N=3 per task is not statistically significant.
 - **No conformance claims.** The OWASP ASI and AARM mappings in
   [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md) are informal gap analyses.
 
@@ -173,8 +169,10 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > it. **All 8 functional benchmark tasks from section 18 (T01-T08) have run
 > live against the real Claude API (`claude-sonnet-5`): 8/8 PASS** — T05
 > with an adversarial decoy file outside scope, T07 with `config/`
-> deliberately in scope instead of forbidden (contrast with T05). These
-> are a **pre-fix baseline** (see Known limitations).
+> deliberately in scope instead of forbidden (contrast with T05). That
+> was the pre-fix baseline; **after the P0 fix the benchmark was re-run 3
+> times per task in docker on `8aad58d`: 24/24 PASS**, cost-to-pass
+> $0.0404 (`docs/EVALUATION.md`).
 > `aigis.evaluation.metrics` + `scripts/aggregate_metrics.py` turn those
 > real Evidence Bundles into the metrics section 19 asks for: 100% success
 > rate, 4.9 average iterations/tool calls, 10.6s average latency, $0.30
@@ -185,7 +183,8 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > push/PR to `main`) is defined in `.github/workflows/ci.yml`.
 >
 > The initial MVP scope (ARCHITECTURE.md section 21) was completed on
-> 2026-08-29; the open P0 above now blocks everything else. Still out of
+> 2026-08-29; the P0 security finding opened on 2026-09-22 was closed on
+> 2026-11-09 (`STATUS.md`). Next work is the P1 list there. Still out of
 > scope: Phase 7 (Production Hardening — human approval, GitHub write
 > access, full CI/CD, a real Credential Broker, RBAC). See `examples/tasks/README.md` to run a benchmark task
 > yourself, or `docs/EVALUATION.md` for the full results table.

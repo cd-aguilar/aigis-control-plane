@@ -12,7 +12,7 @@ Flujo ejemplo (S01-S04): malicious README → agent reads it → agent attempts 
 
 La métrica debe hablar de **"containment against the tested attack set"**, nunca de "100% secure".
 
-**Alcance real de cada eval (8 nov 2026, actualizado el 9/11 con D4, D2, D3 y D1; P0 abierto).** Todos pasan, pero cada uno prueba un canal concreto, no la amenaza en general:
+**Alcance real de cada eval (8 nov 2026, actualizado el 9/11 con D1-D6; P0 cerrado el 9/11).** Todos pasan, pero cada uno prueba un canal concreto, no la amenaza en general:
 
 | Eval | Qué prueba de verdad | Qué no prueba |
 |---|---|---|

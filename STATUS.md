@@ -1,6 +1,6 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 9 nov 2026 — P0 de seguridad con el fix implementado (D1-D6) y el benchmark post-fix corrido: **24/24 PASS en docker sobre `8aad58d`**. **9 de 9 criterios de cierre cumplidos**; el cierre formal del P0 va en el commit 11. Hechos: D4 (`d9933bc`), D2 (`1ac97c0`), D3 (`9279473`), docs 6b (`9165cf7`), 6c (`6059126`), S07/S08 + `contract_version` 2.0 (`f8cf041`), D1 (`bdb743c`), D5 (`d1412fa`, `2a23b11`), D6 (`7e697b1`), 9b (`8aad58d`), fix de `--json` (`dd53df6`) y commit 10 (resultados, sin pushear). Tests en Windows con Docker Desktop: 441 passed, 8 skipped, 0 xfailed; ruff limpio. Anterior: 9 nov 2026, antes del benchmark post-fix._
+_Última actualización: 9 nov 2026 — **P0 de seguridad CERRADO** (abierto el 22 sep 2026): los 9 criterios de cierre se cumplen con evidencia (ver "P0 CERRADO" más abajo). Fix en D1-D6, benchmark post-fix 24/24 PASS en docker sobre `8aad58d`. Commits de cierre: `26eff23` (resultados) y commit 11 (cierre en los docs), sin pushear. Siguiente: los P1 de "Trabajo siguiente". Tests en Windows con Docker Desktop: 441 passed, 8 skipped, 0 xfailed; ruff limpio. Anterior: 9 nov 2026, antes del cierre._
 
 ### Qué sigue (orden del plan, numeración de `next-tasks`)
 
@@ -17,8 +17,10 @@ _Última actualización: 9 nov 2026 — P0 de seguridad con el fix implementado 
    ~~**8b** — docker por defecto, `--unsafe-local`, campos de reproducibilidad, línea base en docker~~ — hecho (ver su entrada). Pendiente: push y CI (lo hace Dario).
    ~~8b~~ — **CI #8 verde sobre `2a23b11`** (1 min 12 s).
 6. ~~**Commit 9 — D6**~~ — hecho (`7e697b1`), con `aigis_dirty` y los filtros de métricas.
-   **Commit 10 (en curso):** la primera pasada sobre `7e697b1` encontró un bug del harness en T07 (ver "Hallazgo del benchmark post-fix"). ~~**9b**~~, el fix, está hecho y pendiente de push. Después, Dario reconstruye la imagen (`make sandbox-image`) y re-corre el benchmark completo (8×3) sobre el commit del 9b. Leer los resultados con `python scripts/aggregate_metrics.py --all --aigis-commit <hash del 9b>`. Cubre el criterio 8.
-7. Al cierre: volver a correr el grep del criterio 7 y marcar el P0 como cerrado.
+   ~~**9b**~~ — `8aad58d` (bug del harness que encontró la primera pasada del benchmark: T07 sin PyYAML).
+   ~~**Commit 10**~~ — `26eff23`: benchmark post-fix 24/24 PASS en docker sobre `8aad58d`, publicado con los fallos de la primera pasada. Cubre el criterio 8.
+7. ~~Al cierre: grep del criterio 7 y P0 marcado como cerrado~~ — **commit 11, 9 nov 2026. P0 CERRADO.**
+8. **Siguiente:** los P1 de "Trabajo siguiente (post-P0)", en el orden que decida Dario.
 
 Este documento resume el estado real de arquitectura, código y repo para que cualquier sesión o IA (Cowork, Claude Code, ChatGPT, Gemini, o vos) arranque con contexto completo sin tener que re-derivarlo. Subilo al knowledge del Project "Aigis Control Plane" en claude.ai o pegalo directo en el chat de otra IA para consulta cruzada. Para el detalle técnico completo de cada pieza, `docs/ARCHITECTURE.md`; para el historial fase por fase, `CLAUDE.md`.
 
@@ -135,7 +137,30 @@ Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada captu
 
 **Pendiente para Dario:** actualizar el texto del README del perfil `cd-aguilar/cd-aguilar` (sesión sin acceso a ese repo) — cambiar cualquier mención de "221" o "223 tests" de `aigis-control-plane` por **"234 tests (233 passed, 1 skip)"**.
 
-## P0 en curso: bypass de scope vía `run_command` (22 sep 2026)
+## P0 CERRADO (9 nov 2026): bypass de scope vía `run_command` (abierto el 22 sep 2026)
+
+**Cerrado el 9 nov 2026.** Los 9 criterios del §8 de `docs/security/P0-design.md`, con su evidencia (el detalle de cada uno, más abajo en la lista):
+
+| # | Criterio | Evidencia |
+|---|---|---|
+| 1 | Tests 1-15 y S06-S08 sin xfail, en local y en docker | Ningún xfail del P0 (`tests/test_p0_regressions.py`); S06-S08 en `security_suite.py`; tests de contenedor obligatorios en CI (`AIGIS_REQUIRE_DOCKER=1`), verdes desde CI #7. |
+| 2 | El PoC da FAIL o DENY, nunca PASS | `tests/test_p0_command_bypass.py`: con la policy por defecto, DENY CMD-001; con `python` de vuelta en la allowlist, FAIL `protected_path_modified`. |
+| 3 | Ningún tool acepta un ejecutable ni argumentos arbitrarios | Tests 1-3, S06, `tests/agent/test_tools.py`, `tests/policy/test_profiles.py` (D1, `bdb743c`). |
+| 4 | `scope_ok`/`max_files_changed` desde cambios observados | `test_08_*` (D4, `d9933bc`). |
+| 5 | Ningún insumo de un gate se puede escribir desde el workspace | Tests 10-12, `test_d3_*`, `test_d3h_*` (D3 `9279473` + 6c `6059126`). |
+| 6 | La CLI usa docker por defecto, con imagen por digest; local explícito y registrado | Tests 13-15, `test_cli.py` (D5, `d1412fa` + `2a23b11`; digest en el `FROM`, image ID verificado). |
+| 7 | Docs sin afirmaciones no verificadas | Grep sobre **todos** los `.md`, re-corrido al cierre (ver criterio 7). |
+| 8 | Benchmark re-corrido post-fix y publicado, fallos incluidos | 24/24 PASS sobre `8aad58d`; los 3 FAIL de T07 sobre `7e697b1` publicados como bug del harness (`26eff23`). |
+| 9 | Rotación de credenciales | Confirmada por Dario el 8 nov 2026. |
+
+**Límites residuales (no los cierra el P0, documentados en `docs/SECURITY.md`):**
+- el código que escribe el agente corre dentro de pytest (en `run_tests` y en el gate), en el contenedor: puede alterar su propia evaluación (monkeypatch de `_pytest`, escribir el mount de reportes), y lo que imprime vuelve al LLM;
+- los checksums del Evidence Bundle no están firmados;
+- `--unsafe-local` sigue existiendo, explícito y registrado.
+
+OWASP ASI01/02/05 y AARM se re-evaluaron al cierre y no subió ninguno: dependen de esos límites (`docs/THREAT-MODEL.md`).
+
+**Historia del P0** (se conserva tal cual se fue escribiendo):
 
 **Hallazgo abierto, confirmado contra el código (no contra un documento):** una sesión de Claude Code recibió un brief de P0 que citaba `claude/aigis-control-plane-p0-design-2026-09-22.md` y `claude/aigis-control-plane-security-review-2026-09-22.md` como el diseño completo y el PoC — ninguno de los dos estaba en el repo en ese momento (_desde el 8/11 están en `docs/security/P0-design.md` y `docs/security/P0-review.md`, `73067c9`_). Dario decidió (22/9) seguir igual, reconstruyendo el hallazgo desde `STATUS.md`/`ARCHITECTURE.md`/el código, y preguntando decisión por decisión en vez de esperar los documentos. El hallazgo en sí se confirmó de forma independiente leyendo `policy/engine.py`, `sandbox/local_cow.py`, `domain/task_state.py` y `evaluation/decision_engine.py` — no es una afirmación sin verificar del brief original.
 
@@ -159,7 +184,10 @@ Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada captu
 
 D6 (`deny_escalation=security`, test 16) es P1 en el diseño y **no** es criterio de cierre — hecho en el commit 9. Los criterios 1-7 son verificables por CI.
 
-**P1 anotados (no se implementan dentro del P0):**
+**Trabajo siguiente (post-P0) — P1 anotados durante el P0:**
+- **`baseline_unusable` en tareas del tipo "implementá X"** (9b): si los tests de una tarea futura importan una función que todavía no existe, la base no colecta y el resultado es NEEDS_HUMAN en vez de calificar al agente. Hoy no afecta a ninguna de las 8 tareas (verificado). Opciones: distinguir un `ImportError` de un símbolo que la tarea pide implementar, o exigir que las tareas declaren sus tests como colectables (stub de la función en la base).
+- **Tests ocultos** para el límite residual del grader (monkeypatch de `_pytest` desde el código del agente): tests que el agente no ve, o un proceso calificador separado del código calificado.
+- **`run_tests`: marcar un error de colección como "preexistente en el repo base"** (opcional del 9b): necesita la línea base en el executor.
 - **`pip --require-hashes` en `sandbox/Dockerfile`** (revisión del 8a, Dario 9/11): pasar las versiones a un `sandbox/requirements.txt` con hashes e instalar con `--require-hashes`, para que la imagen no dependa de que PyPI sirva el mismo artefacto para esa versión. El test de paridad con `pyproject.toml` tendría que leer ese archivo.
 - **Regla 4 del 6c (Dario, 9/11):** hoy `RuffGate` corre `--ignore-noqa` sobre todo archivo que tocó el agente, así que un `noqa` que ya estaba en la base en ese archivo también deja de silenciar. Refinarlo para rechazar solo los `noqa` que **agregó** el agente, comparando contra la base. Aceptado como está por ahora: ninguna tarea del benchmark tiene `noqa`, `xfail` ni `skip`.
 - `LocalCowSandbox.run_command` sin `start_new_session=True`: ante un timeout mueren solo los hijos directos; los nietos sobreviven y pueden colgar `communicate()` si heredaron los pipes. Fix: `start_new_session=True` + `os.killpg` en el timeout, con test.
@@ -497,7 +525,7 @@ Tests: Windows con Docker Desktop 439 passed, 8 skipped, 0 xfailed; Linux (conte
 Hash: `dd53df6`. Bug mío del commit `7e697b1`: `RunRecord` sumó `started_at` (un `datetime`), `json.dumps` no lo serializaba y `--json` (también con `--per-task`) lanzaba `TypeError`. Lo encontré preparando los docs del benchmark. Se serializa con `default=str`; un test cubre los dos caminos JSON. La salida de texto, la que usó Dario, no estaba afectada.
 
 **Commit 10 — docs: post-fix benchmark results (criterio 8) (9 nov 2026)**
-Hash: se anota en el commit siguiente. Benchmark corrido por Dario sobre `8aad58d`: **24/24 PASS** (8 tareas × 3), todas `isolation: docker`, imagen `sha256:82889fc1…`, `aigis_dirty: false`, `claude-sonnet-5`, sin DENY ni `discarded-changes`. Lo re-verifiqué contra `evidence/` (24 de 48 corridas pasan el filtro, las mismas cifras).
+Hash: `26eff23`. Benchmark corrido por Dario sobre `8aad58d`: **24/24 PASS** (8 tareas × 3), todas `isolation: docker`, imagen `sha256:82889fc1…`, `aigis_dirty: false`, `claude-sonnet-5`, sin DENY ni `discarded-changes`. Lo re-verifiqué contra `evidence/` (24 de 48 corridas pasan el filtro, las mismas cifras).
 - **EVALUATION.md**, sección nueva "Benchmark post-fix", con:
   - el agregado y la tabla por tarea, más tokens in/out promedio y latencia por tarea;
   - la comparación contra la línea base pre-fix (4.9 iteraciones igual; latencia 10.6 → 9.7 s; cost-to-pass $0.0381 → $0.0404, +6%; tokens in +19%, tokens out −22%);
@@ -507,6 +535,20 @@ Hash: se anota en el commit siguiente. Benchmark corrido por Dario sobre `8aad58
 - **Latencia, verificada antes de comparar (nota 2):** la fórmula no cambió desde `ec85ff4` (29/8). Va de `TaskState.started_at` al final del último intento: el loop del agente, sin la copia del sandbox, la línea base ni los gates. Es comparable, con el matiz de que ahora cada tool levanta un contenedor.
 - **Corridas pre-fix:** las de agosto ya no están en `evidence/` local; las cifras pre-fix salen de la tabla publicada el 29/8.
 - **Criterio 8 marcado** (ver arriba).
+
+**Commit 11 — docs: close P0 (9 nov 2026)**
+Hash: se anota en el commit siguiente.
+- **Grep del criterio 7 re-corrido sobre todos los `.md` versionados**, incluidos `docs/security/` y `claude/`. Solo hay coincidencias calificadas:
+  - "no network"/"sin red" en README, ARCHITECTURE, EVALUATION, THREAT-MODEL y SECURITY: describen el default docker, con `--unsafe-local` como excepción explícita;
+  - "OverlayFS" en `CLAUDE.md:116`: dice que nunca se implementó;
+  - en `docs/security/P0-design.md`, `P0-review.md` y los briefs de `claude/`, las palabras aparecen **citadas**: el diseño nombra lo que había que quitar, y no lo afirma;
+  - en este `STATUS.md`, describen el propio criterio y los commits.
+- **El P0 pasa a CERRADO (9/11)** en STATUS (sección renombrada, con la tabla de los 9 criterios y su evidencia al principio; la historia se conserva), README, SECURITY, THREAT-MODEL, EVALUATION, ARCHITECTURE §24 y CLAUDE.md.
+- **README:** "Known limitations" sigue, sin el bloque del P0. En su lugar va una nota corta de cierre con los punteros. El bullet del benchmark pasa a decir que el benchmark mide al agente, no los controles (24/24 sin DENY). El de "graded code" ya no menciona el modo local como el caso del límite: el límite vale también en el contenedor.
+- **OWASP ASI01/02/05: siguen en 🟡.** D1-D6 cerraron el canal del P0, pero los tres dependen de un límite residual: el código del agente corre en pytest y puede alterar su propia evaluación. Subirlos a ✅ sería afirmar de más. ASI03/09/10 siguen parciales por Fase 7.
+- **AARM: ningún requisito cambia de nivel.** R1 y R9 mejoran pero siguen 🟡 (efectos del código del agente que la policy no evalúa; sin credenciales JIT). R5 sigue sin firma, R6 sin identidades, R2/R4/R7/R8 sin implementar.
+- **Trabajo siguiente:** la lista de P1 queda como "Trabajo siguiente (post-P0)", con un ítem nuevo: `baseline_unusable` para tareas del tipo "implementá X".
+Tests: sin cambios de código (441 passed, 8 skipped en Windows con Docker Desktop, del commit anterior) | ruff: clean | CI: pendiente del push.
 
 **Pendiente de Dario:**
 - ~~Los dos documentos del P0~~ — **commiteados el 8 nov 2026** como `docs/security/P0-design.md` (diseño aprobado, tests §4, claims §7, criterios §8) y `docs/security/P0-review.md` (hallazgos H1-H11, clasificación de controles, PoC). El checklist de arriba pasa a reemplazarse por los 9 criterios del §8 en el commit siguiente.
@@ -518,7 +560,7 @@ Hash: se anota en el commit siguiente. Benchmark corrido por Dario sobre `8aad58
 
 ## Pendiente
 
-El alcance inicial del MVP está completo salvo el P0 de seguridad abierto arriba, que pasa a ser bloqueante para cualquier otra cosa. Lo que sigue es lo que quedaba pendiente antes del P0 — explícitamente fuera de ese alcance o discrecional, no bloqueante:
+El alcance inicial del MVP está completo y el P0 de seguridad está **cerrado (9 nov 2026)**. Lo siguiente son los P1 de "Trabajo siguiente (post-P0)", arriba. Lo que sigue acá es lo que quedaba pendiente antes del P0 — explícitamente fuera de ese alcance o discrecional:
 
 1. Fase 7 (Production Hardening): explícitamente fuera del alcance inicial — no adelantar (rechazado en la revisión externa del 27/8, ver arriba).
 2. ~~Documentación técnica separada~~ — hecho el 29/8, ver hito arriba.

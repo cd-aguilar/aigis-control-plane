@@ -237,16 +237,15 @@ diferidos y rechazados, discutidos con Dario en sesión de Cowork:
 - [x] ~~Segunda pasada del benchmark (N>1 por tarea)~~ — cancelada por
       Dario el 22/9: el benchmark se re-corre completo después del fix
       del P0 (commit 10).
-- [ ] **P0 de seguridad (abierto desde el 22/9, bloquea todo lo demás):**
+- [x] **P0 de seguridad — CERRADO el 9 nov 2026** (abierto el 22/9):
       bypass de scope vía `run_command`. Diseño en
-      `docs/security/P0-design.md`, estado y criterios en `STATUS.md`.
-      Hechos: tests de regresión (xfail strict), recorte de claims, CI
-      mínima, D4 (`d9933bc`), D2 (`1ac97c0`), D3 (`9279473`, endurecido
-      en `6059126`), D1 (`bdb743c`), D5 (`d1412fa` + `2a23b11`: docker
-      por defecto), D6 (`7e697b1`) y 9b (fix del harness que encontró
-      la primera pasada del benchmark: T07 sin PyYAML en la imagen). Falta
-      re-correr el benchmark completo sobre el commit del 9b (en docker,
-      filtrado por `--aigis-commit`). Van 8/9 criterios de cierre
-      (falta el 8). Ya no queda ningún xfail del P0.
+      `docs/security/P0-design.md`; los 9 criterios de cierre y su
+      evidencia en `STATUS.md`. D4 (`d9933bc`), D2 (`1ac97c0`), D3
+      (`9279473` + `6059126`), D1 (`bdb743c`), D5 (`d1412fa` + `2a23b11`:
+      docker por defecto), D6 (`7e697b1`), 9b (`8aad58d`, bug del harness
+      que encontró el benchmark) y benchmark post-fix 24/24 PASS en docker
+      (`26eff23`). Límites residuales documentados en `docs/SECURITY.md`.
+- [ ] **Siguiente: P1 post-P0** (lista en `STATUS.md`, "Trabajo
+      siguiente"). Fase 7 sigue sin empezar sin decisión explícita.
 - [ ] Fase 7 (Production Hardening) — explícitamente fuera del alcance
       inicial, no empezar sin decisión explícita

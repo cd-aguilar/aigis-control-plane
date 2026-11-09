@@ -4,7 +4,7 @@ _Desglosado de `ARCHITECTURE.md` sección 16 el 2026-08-29. Ver `ARCHITECTURE.md
 
 ## Security Model
 
-> **P0 abierto (desde el 22 sep 2026), con el fix implementado (D1-D5) y el benchmark post-fix pendiente:** un `run_command` con un ejecutable de la allowlist (`python`) leía rutas prohibidas, escribía fuera de alcance y alteraba los tests, y la decisión terminaba en `PASS`. Ese PoC da FAIL desde D4/D2/D3; desde D1 no hay tool de comandos genérico; desde D5 el default es docker (sin red, sin el host, workspace de solo lectura). Límite residual: el código que escribe el agente igual corre (pytest lo importa, en `run_tests` y en el gate), ahora dentro del contenedor: ahí puede alterar su propia evaluación desde adentro (monkeypatch de `_pytest`, escribir el mount de reportes) y lo que imprime vuelve al LLM. El modo local existe solo con `--unsafe-local` (registrado como `isolation: none`). Detalle: `docs/security/P0-review.md`; plan de corrección: `docs/security/P0-design.md`; regresiones: `tests/test_p0_regressions.py`.
+> **P0 CERRADO el 9 nov 2026** (abierto el 22 sep 2026): un `run_command` con un ejecutable de la allowlist (`python`) leía rutas prohibidas, escribía fuera de alcance y alteraba los tests, y la decisión terminaba en `PASS`. Corregido con D1-D6 (sin comando genérico, prohibidos fuera del workspace, insumos de los gates protegidos, cambios observados, docker por defecto, escalada de DENY de seguridad), con los 9 criterios de cierre cumplidos (`STATUS.md`). Esta tabla describe el estado después del cierre. Límite residual: el código que escribe el agente sigue corriendo dentro de pytest (en `run_tests` y en el gate), en el contenedor: ahí puede alterar su propia evaluación (monkeypatch de `_pytest`, escribir el mount de reportes) y lo que imprime vuelve al LLM; los checksums del Evidence Bundle no están firmados; `--unsafe-local` existe, explícito y registrado. Detalle: `docs/security/P0-review.md`; diseño: `docs/security/P0-design.md`; regresiones: `tests/test_p0_regressions.py`.
 
 | Amenaza | Mitigación | Estado real hoy |
 |---|---|---|
@@ -54,11 +54,16 @@ control plane — el Top 10 de OWASP enumera riesgos del agente, no del
 sistema de auditoría que lo vigila. Es exactamente lo que motiva evolucionar
 el Evidence Bundle hacia attestations firmadas (`ARCHITECTURE.md` sección 13).
 
-**Resumen honesto (re-evaluado el 8 nov 2026 con el P0 abierto):** de los
+**Resumen honesto (re-evaluado el 9 nov 2026, al cerrar el P0):** de los
 10 ítems, **ninguno** queda como cubierto. 6 son parciales: ASI01, ASI02 y
-ASI05 bajaron de ✅ a 🟡 por el P0 (los evals S01-S04 siguen pasando, pero
-prueban el canal que la policy sí controla, no el que el P0 deja abierto), y
-ASI03, ASI09 y ASI10 ya eran parciales porque les falta una pieza de Fase 7.
+ASI05 bajaron de ✅ a 🟡 por el P0 el 8/11 y **siguen en 🟡 después de
+cerrarlo**. D1-D6 cerraron el canal del P0 (no hay comando genérico, docker
+por defecto, cambios observados, grader protegido), pero los tres dependen
+de un límite residual que el cierre no elimina: el código que escribe el
+agente corre dentro de pytest y puede alterar su propia evaluación, y su
+salida vuelve al LLM. Subirlos a ✅ sería afirmar más de lo que el sistema
+garantiza. ASI03, ASI09 y ASI10 siguen parciales porque les falta una pieza
+de Fase 7.
 Los otros 4 quedan
 fuera del alcance actual por diseño, no por descuido (ASI04, ASI06, ASI07,
 ASI08 — todos dependen de capacidades que el alcance inicial excluye
@@ -74,7 +79,7 @@ nombres diferentes — se descartó por discrepar con las otras cuatro.
 
 ## AARM — informal gap analysis (8 nov 2026)
 
-[AARM (Autonomous Action Runtime Management)](https://arxiv.org/abs/2602.09433) define 9 requisitos: **Core = R1-R6 (MUST)** y **Extended = R7-R9 (SHOULD)**. La conformidad pública (`aarm.dev`) la revisa y aprueba un grupo de trabajo, con criterios organizacionales que este proyecto no cumple ni busca cumplir. Esto es un **gap analysis informal y conservador**: no afirma conformidad con AARM, ni siquiera parcial. Cada fila se verificó contra el código de `main` del 8/11, con el P0 abierto.
+[AARM (Autonomous Action Runtime Management)](https://arxiv.org/abs/2602.09433) define 9 requisitos: **Core = R1-R6 (MUST)** y **Extended = R7-R9 (SHOULD)**. La conformidad pública (`aarm.dev`) la revisa y aprueba un grupo de trabajo, con criterios organizacionales que este proyecto no cumple ni busca cumplir. Esto es un **gap analysis informal y conservador**: no afirma conformidad con AARM, ni siquiera parcial. Verificado contra el código del 8/11 y **re-evaluado el 9/11 al cerrar el P0**: ningún requisito cambia de nivel. D1-D6 mejoran R1 y R9, pero sin pasar a cumplido: el código del agente que corre dentro de pytest tiene efectos que la policy no evalúa, y no hay firma (R5) ni identidades (R6).
 
 | Req | Nivel | Qué pide (resumen del paper) | AIGIS hoy | Por qué |
 |---|---|---|---|---|
