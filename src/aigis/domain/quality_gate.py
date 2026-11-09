@@ -11,12 +11,19 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from aigis.domain.enums import GateType
 
 
 class GateResult(BaseModel):
+    """``infrastructure_error`` is set when the gate could not produce a
+    verdict at all (tool or plugin missing, tool crashed before grading) --
+    as opposed to a gate that ran and found failures. The Decision Engine
+    turns the former into NEEDS_HUMAN (``gate_infrastructure_error``) and
+    the latter into FAIL (P0 D3).
+    """
+
     model_config = {"frozen": True}
 
     gate_name: str = Field(min_length=1, description="e.g. 'pytest', 'ruff'")
@@ -29,3 +36,14 @@ class GateResult(BaseModel):
         "report this result was derived from, e.g. 'test-report.json'.",
     )
     duration_seconds: float | None = Field(default=None, ge=0)
+    infrastructure_error: str | None = Field(
+        default=None,
+        description="Why the gate could not run (no verdict). Never set "
+        "together with passed=True.",
+    )
+
+    @model_validator(mode="after")
+    def _infrastructure_error_never_passes(self) -> GateResult:
+        if self.infrastructure_error is not None and self.passed:
+            raise ValueError("a gate with an infrastructure_error cannot have passed")
+        return self

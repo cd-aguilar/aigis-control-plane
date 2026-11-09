@@ -68,6 +68,72 @@ def test_path_cannot_be_both_allowed_and_forbidden() -> None:
         )
 
 
+def _contract_with(**overrides: object) -> TaskContract:
+    fields: dict[str, object] = dict(
+        task_id="T01",
+        description="d",
+        allowed_paths=["src/"],
+        success_criteria=["ok"],
+        required_gates=["pytest"],
+        max_iterations=5,
+        max_runtime_seconds=300,
+        max_tool_calls=20,
+        max_files_changed=3,
+    )
+    fields.update(overrides)
+    return TaskContract(**fields)
+
+
+@pytest.mark.parametrize(
+    "allowed",
+    [
+        ["tests/"],
+        ["src/", "tests/unit/"],
+        ["."],  # contains tests/ and every root config
+        ["pytest.ini"],
+        ["src/conftest.py"],  # names a by-name protected file
+        ["src/pkg/ruff.toml"],
+    ],
+)
+def test_allowed_and_protected_paths_must_not_overlap(allowed: list[str]) -> None:
+    with pytest.raises(ValidationError, match="must not overlap"):
+        _contract_with(allowed_paths=allowed)
+
+
+def test_allowed_dir_may_contain_by_name_protected_files() -> None:
+    # 'src/' may hold a conftest.py: it simply stays protected (read-only).
+    contract = _contract_with(allowed_paths=["src/", "config/"])
+    assert contract.is_protected("src/conftest.py")
+    assert not contract.is_protected("src/calculator.py")
+
+
+@pytest.mark.parametrize(
+    "path,protected",
+    [
+        ("tests/test_x.py", True),
+        ("tests/sub/conftest.py", True),
+        ("conftest.py", True),
+        ("src/conftest.py", True),
+        ("src/a/b/conftest.py", True),
+        ("pytest.ini", True),
+        (".pytest.ini", True),
+        ("setup.cfg", True),
+        ("tox.ini", True),
+        ("pyproject.toml", True),
+        ("src/pyproject.toml", True),
+        ("ruff.toml", True),
+        ("src/ruff.toml", True),
+        ("src/.ruff.toml", True),
+        ("src/pytest.ini", False),  # pytest only reads the rootdir's ini
+        ("src/calculator.py", False),
+        ("src/my_conftest.py", False),
+        ("testsuite/x.py", False),
+    ],
+)
+def test_default_protected_paths(path: str, protected: bool) -> None:
+    assert _contract_with().is_protected(path) is protected
+
+
 def test_contract_is_frozen(contract: TaskContract) -> None:
     with pytest.raises(ValidationError):
         contract.max_iterations = 100

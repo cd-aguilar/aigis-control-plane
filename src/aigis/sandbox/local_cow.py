@@ -29,6 +29,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 
+from aigis.domain.task_contract import path_matches_protected
 from aigis.policy.engine import path_matches_prefix
 from aigis.sandbox.base import CommandResult
 
@@ -57,6 +58,10 @@ class LocalCowSandbox:
         # (P0 D2), with the reason -- reported in the Evidence Bundle.
         self.excluded_paths: list[dict[str, str]] = []
         self._exclude: tuple[str, ...] = ()
+        # P0 D3: set by start_evaluation(). Agent changes that did NOT make
+        # it into the evaluation workspace, with the reason.
+        self.evaluating = False
+        self.discarded_changes: list[dict[str, str]] = []
 
     @property
     def workdir(self) -> Path:
@@ -187,9 +192,63 @@ class LocalCowSandbox:
         )
 
     def _changes(self) -> list[_Change]:
+        if self.evaluating:
+            # After start_evaluation() the workspace is the control plane's,
+            # not the agent's: comparing it against the base would report
+            # the gate's view, never what the agent did.
+            raise RuntimeError("changed_paths/collect_diff must be read before start_evaluation()")
         return _tree_changes(
             self.base_repo_path, self.workdir, base_excluded=self._excluded_from_base
         )
+
+    def start_evaluation(self, *, protected: Sequence[str]) -> None:
+        """See ``Sandbox.start_evaluation``. Built from the BASE, never by
+        copying the agent's workspace and "restoring" the protected paths:
+        a protected path the agent created (a new conftest.py, a symlink)
+        must not survive, and there is nothing to forget to restore.
+
+        Carried over from the agent's workspace: added/modified regular
+        files and deletions, outside ``protected``. Not carried over, and
+        recorded in ``discarded_changes``: anything under ``protected``,
+        and every symlink or special file the agent left -- ``patch_file``
+        cannot create one, so it is already an ``untracked_modification``
+        (FAIL), and carrying it would let a gate follow it to a host file.
+        """
+        changes = self._changes()
+        tmp = Path(tempfile.mkdtemp(prefix="aigis-eval-"))
+        evaldir = tmp / "workspace"
+        shutil.copytree(
+            self.base_repo_path,
+            evaldir,
+            symlinks=True,
+            ignore=self._eval_copy_ignore,
+        )
+        discarded: list[dict[str, str]] = []
+        for change in changes:
+            if any(path_matches_protected(change.path, entry) for entry in protected):
+                discarded.append({"path": change.path, "reason": "protected_path"})
+                continue
+            target = evaldir / change.path
+            if change.work is None:
+                _remove_entry(target)
+            elif change.work.kind == "file":
+                _remove_entry(target)
+                _make_parent_dirs(target, evaldir)
+                target.write_bytes(change.work.payload)  # type: ignore[arg-type]
+            else:
+                discarded.append({"path": change.path, "reason": f"{change.work.kind}_not_carried"})
+        agent_tmp = self.workdir.parent
+        self._workdir = evaldir
+        self.evaluating = True
+        self.discarded_changes = discarded
+        shutil.rmtree(agent_tmp, ignore_errors=True)
+
+    def _eval_copy_ignore(self, dirpath: str, names: list[str]) -> list[str]:
+        """Exactly the set create() skipped (forbidden paths, unsafe base
+        symlinks), without re-deciding or re-recording it.
+        """
+        rel_dir = Path(dirpath).resolve().relative_to(self.base_repo_path)
+        return [name for name in names if self._excluded_from_base((rel_dir / name).as_posix())]
 
     def collect_diff(self) -> str:
         return _render_diff(self._changes())
@@ -209,6 +268,34 @@ class LocalCowSandbox:
         if self._workdir is not None:
             shutil.rmtree(self._workdir.parent, ignore_errors=True)
             self._workdir = None
+
+
+def _remove_entry(target: Path) -> None:
+    """Removes whatever sits at ``target`` (file, symlink or directory)
+    without following a link. A missing path, or one whose parent is no
+    longer a directory, is already gone.
+    """
+    try:
+        st = target.lstat()
+    except (FileNotFoundError, NotADirectoryError):
+        return
+    if stat.S_ISDIR(st.st_mode):
+        shutil.rmtree(target)
+    else:
+        target.unlink()
+
+
+def _make_parent_dirs(target: Path, root: Path) -> None:
+    """Like ``mkdir(parents=True)``, but a non-directory sitting where a
+    parent directory must go (the agent turned a file into a directory) is
+    removed first instead of raising.
+    """
+    current = root
+    for part in target.relative_to(root).parts[:-1]:
+        current = current / part
+        if current.is_symlink() or (current.exists() and not current.is_dir()):
+            current.unlink()
+        current.mkdir(exist_ok=True)
 
 
 def _apply_resource_limits() -> None:

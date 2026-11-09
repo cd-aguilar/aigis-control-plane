@@ -17,7 +17,7 @@ _Desglosado de `ARCHITECTURE.md` sección 16 el 2026-08-29. Ver `ARCHITECTURE.md
 | Infinite agent loop | iteration/tool/runtime limits | Funciona (S05). |
 | Unauthorized file modification | path allowlist | Solo para `patch_file`: una escritura vía `run_command` no queda en `files_changed` y `scope_ok` no la ve (P0, D4). |
 | Out-of-band access via allowed command | — (nuevo, P0) | Abierto. Un ejecutable permitido lee o escribe cualquier ruta del workspace. Eval S06 (xfail hasta D1+D2). |
-| Grader tampering | — (nuevo, P0) | Abierto. Los gates evalúan tests, config de pytest/ruff y un archivo de reporte que el agente puede escribir. Eval S07 (xfail hasta D3). |
+| Grader tampering | `protected_paths` + workspace de evaluación desde la base + reporte fuera del workspace (D3) | **Parcial.** Lo que el agente deja escrito en tests, config de pytest/ruff, `conftest.py` o el reporte no llega al gate, y da FAIL `protected_path_modified` (S07). Sigue abierto: el código del agente corre dentro del proceso del gate (pytest importa `src/`) y puede alterar la corrida desde adentro. Ver `SECURITY.md`. |
 | Evidence tampering | checksums SHA-256 en `hashes.json` | **Solo detectan corrupción accidental**: sin clave, sin firma, en el mismo directorio y sin cubrir `decision.json`. Cualquiera con acceso al bundle los recalcula. Receipts firmados: planeado (P3), no implementado. |
 
 La afirmación de seguridad debe ser: **"AIGIS reduces and contains agent risk through layered controls."** Nunca: "AIGIS makes agents secure."

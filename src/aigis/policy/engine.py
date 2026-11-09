@@ -17,6 +17,7 @@ Rule order (fail closed, section 3.6 -- the first matching rule wins):
    are even consulted.
 2. READ_FILE / PATCH_FILE: path traversal and absolute paths are denied
    outright (PATH-001), then ``forbidden_paths`` (PATH-002), then
+   ``protected_paths`` (read ALLOW, patch DENY PATH-004), then
    ``allowed_paths`` (PATH-003, deny-by-default if nothing matches).
 3. RUN_COMMAND: argv path-traversal in any argument (CMD-002), then the
    command allowlist (CMD-001, deny-by-default).
@@ -173,6 +174,25 @@ class PolicyEngine:
                 _DENY,
                 "PATH-002",
                 f"'{path}' is inside forbidden path '{forbidden}'",
+                RiskLevel.HIGH,
+            )
+        # P0 D3: protected paths (tests, test/lint config) are read-only for
+        # the agent -- readable even outside allowed_paths, never patchable,
+        # even when an allowed prefix covers them (src/conftest.py).
+        if self.contract.is_protected(path):
+            if request.tool == ToolName.READ_FILE:
+                return self._decision(
+                    request,
+                    _ALLOW,
+                    "PATH-000",
+                    f"'{path}' is a protected path (read-only)",
+                    self.contract.risk_level,
+                )
+            return self._decision(
+                request,
+                _DENY,
+                "PATH-004",
+                f"'{path}' is a protected path (gate input, read-only)",
                 RiskLevel.HIGH,
             )
         if not any(_matches_prefix(path, p) for p in self.contract.allowed_paths):

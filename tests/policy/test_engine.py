@@ -27,10 +27,31 @@ def test_allows_read_within_allowed_paths(engine: PolicyEngine) -> None:
 
 
 def test_allows_read_of_exact_allowed_file(engine: PolicyEngine) -> None:
-    # contract's allowed_paths are "src/" and "tests/" (directory prefixes);
-    # a nested file under either must resolve as within-scope.
+    # tests/ is not in allowed_paths since P0 D3 (allowed is "src/"), but it
+    # is a protected path: readable by the agent, never patchable.
     request = ToolRequest(tool=ToolName.READ_FILE, path="tests/test_math.py")
     assert engine.evaluate(request).decision == PolicyDecisionType.ALLOW
+
+
+@pytest.mark.parametrize("path", ["tests/test_math.py", "src/conftest.py", "pyproject.toml"])
+def test_protected_paths_are_read_only(engine: PolicyEngine, path: str) -> None:
+    """P0 D3: a protected path can be read even outside allowed_paths, and
+    can never be patched -- not even src/conftest.py, which "src/" covers.
+    """
+    read = engine.evaluate(ToolRequest(tool=ToolName.READ_FILE, path=path))
+    patch = engine.evaluate(
+        ToolRequest(tool=ToolName.PATCH_FILE, path=path, old_str="a", new_str="b")
+    )
+    assert read.decision == PolicyDecisionType.ALLOW
+    assert patch.decision == PolicyDecisionType.DENY
+    assert patch.policy_id == "PATH-004"
+
+
+def test_forbidden_wins_over_protected(contract: TaskContract, config: PolicyConfig) -> None:
+    engine = PolicyEngine(contract.model_copy(update={"forbidden_paths": ["tests/"]}), config)
+    decision = engine.evaluate(ToolRequest(tool=ToolName.READ_FILE, path="tests/test_math.py"))
+    assert decision.decision == PolicyDecisionType.DENY
+    assert decision.policy_id == "PATH-002"
 
 
 def test_denies_read_outside_allowed_paths(engine: PolicyEngine) -> None:

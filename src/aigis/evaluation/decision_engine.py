@@ -23,7 +23,14 @@ suficiente, DENY o NEEDS_HUMAN — nunca se concede autoridad implícita"):
    the filesystem -- never from ``TaskState.files_changed``, which is only
    the agent's own tool log (P0 D4). A path that changed but never went
    through ``patch_file`` is an ``untracked_modification``: ``scope_ok``
-   is False and the reason names the paths.
+   is False and the reason names the paths. A required gate that ran but
+   could not produce a verdict (``GateResult.infrastructure_error``: tool
+   or plugin missing) is the same case -> ``NEEDS_HUMAN``
+   (``gate_infrastructure_error``), never FAIL and never PASS (P0 D3).
+   An observed change to a ``protected_path`` (a test, test/lint config)
+   is ``protected_path_modified``: ``scope_ok`` is False -> FAIL. The
+   gates never saw that change (they ran on the base version), so the
+   verdict does not depend on what it did.
 3. Otherwise, if any of the six booleans in the Decision formula
    (``contract_valid AND policy_ok AND tests_pass AND lint_pass AND
    scope_ok AND resource_limits_ok``) is False → ``FAIL``. This is a
@@ -62,7 +69,8 @@ class DecisionEngine:
         observed = sorted(set(observed_changes))
         untracked = [path for path in observed if path not in state.files_changed]
         out_of_scope = [path for path in observed if not path_within_scope(path, contract)]
-        scope_ok = not untracked and not out_of_scope
+        protected = [path for path in observed if contract.is_protected(path)]
+        scope_ok = not untracked and not out_of_scope and not protected
 
         # Every limit from the state except max_files_changed, which is
         # re-checked against what was observed -- the tool log can only
@@ -76,6 +84,11 @@ class DecisionEngine:
 
         by_name = {gate.gate_name: gate for gate in gate_results}
         missing_gates = [name for name in contract.required_gates if name not in by_name]
+        infra_errors = [
+            name
+            for name in contract.required_gates
+            if name in by_name and by_name[name].infrastructure_error is not None
+        ]
 
         # A missing gate can't be attributed to TEST or LINT without knowing
         # its type in advance, so it forces BOTH booleans False rather than
@@ -124,6 +137,23 @@ class DecisionEngine:
                 reason=f"required gate(s) produced no result, cannot verify: {missing_gates}",
             )
 
+        if infra_errors:
+            details = "; ".join(
+                f"{name}: {by_name[name].infrastructure_error}" for name in infra_errors
+            )
+            return self._build(
+                run_id,
+                contract,
+                contract_valid,
+                policy_ok,
+                tests_pass,
+                lint_pass,
+                scope_ok,
+                resource_limits_ok,
+                final=FinalDecision.NEEDS_HUMAN,
+                reason=f"gate_infrastructure_error: {infra_errors} ({details}), cannot verify",
+            )
+
         all_ok = (
             contract_valid
             and policy_ok
@@ -150,6 +180,8 @@ class DecisionEngine:
                 reason += f"; untracked_modification: {untracked}"
             if out_of_scope:
                 reason += f"; out_of_scope_change: {out_of_scope}"
+            if protected:
+                reason += f"; protected_path_modified: {protected}"
             if len(observed) > contract.max_files_changed:
                 reason += (
                     f"; max_files_changed: {len(observed)} observed > "

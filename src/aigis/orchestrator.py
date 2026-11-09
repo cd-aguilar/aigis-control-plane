@@ -15,6 +15,8 @@ a plain function, without spawning a subprocess or touching argv.
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -67,15 +69,26 @@ def run_task(
         runtime.run(state)
 
         # Observed BEFORE the gates run (P0 D4): pytest/ruff leave their own
-        # byproducts in the workspace (caches, the pytest report until D3),
-        # and those are the control plane's writes, not the agent's.
+        # byproducts (caches), and those are the control plane's writes, not
+        # the agent's. Must also precede start_evaluation(), which replaces
+        # the agent's workspace.
         # diff.patch and observed_changes come from the same comparison.
         observed_changes = sandbox.changed_paths()
         diff = sandbox.collect_diff()
 
-        gate_results = [
-            gate.run(sandbox) for gate in gates if gate.gate_name in contract.required_gates
-        ]
+        # P0 D3: the gates never run in the agent's workspace. From here on
+        # the sandbox holds the base repo plus the agent's changes outside
+        # protected_paths, and every report lands in a directory outside it.
+        sandbox.start_evaluation(protected=contract.protected_paths)
+        report_dir = Path(tempfile.mkdtemp(prefix="aigis-gate-reports-"))
+        try:
+            gate_results = [
+                gate.run(sandbox, report_dir=report_dir)
+                for gate in gates
+                if gate.gate_name in contract.required_gates
+            ]
+        finally:
+            shutil.rmtree(report_dir, ignore_errors=True)
     finally:
         sandbox.destroy()
 

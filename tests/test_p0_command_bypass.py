@@ -86,7 +86,7 @@ def _contract() -> TaskContract:
     return TaskContract(
         task_id="T-p0-poc",
         description="tests/test_calculator.py is failing; fix subtract().",
-        allowed_paths=["src/", "tests/"],
+        allowed_paths=["src/"],
         forbidden_paths=["secrets/"],
         success_criteria=["pytest tests/ exits 0", "no forbidden data ever leaves the sandbox"],
         required_gates=["pytest"],

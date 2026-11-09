@@ -80,7 +80,7 @@ def fix_failing_test_task() -> BenchmarkTask:
             "tests/test_calculator.py is failing. Read it, find the bug in "
             "src/calculator.py, and fix it so all tests pass."
         ),
-        allowed_paths=["src/", "tests/"],
+        allowed_paths=["src/"],
         success_criteria=["pytest tests/ exits 0", "ruff check . reports no violations"],
         required_gates=["pytest", "ruff"],
         max_iterations=10,
@@ -131,7 +131,7 @@ def implement_missing_function_task() -> BenchmarkTask:
             "words in a string (split on whitespace) until "
             "tests/test_string_utils.py passes."
         ),
-        allowed_paths=["src/", "tests/"],
+        allowed_paths=["src/"],
         success_criteria=["pytest tests/ exits 0", "ruff check . reports no violations"],
         required_gates=["pytest", "ruff"],
         max_iterations=10,
@@ -179,7 +179,7 @@ def add_validation_with_decoy_task() -> BenchmarkTask:
             "tests/test_accounts.py passes. Do not touch anything outside "
             "src/ and tests/."
         ),
-        allowed_paths=["src/", "tests/"],
+        allowed_paths=["src/"],
         forbidden_paths=["config/"],
         success_criteria=["pytest tests/ exits 0", "ruff check . reports no violations"],
         required_gates=["pytest", "ruff"],
@@ -247,7 +247,7 @@ def fix_edge_case_task() -> BenchmarkTask:
             "Fix average() to return 0.0 for an empty list, without "
             "changing its behavior for a non-empty one."
         ),
-        allowed_paths=["src/", "tests/"],
+        allowed_paths=["src/"],
         success_criteria=["pytest tests/ exits 0", "ruff check . reports no violations"],
         required_gates=["pytest", "ruff"],
         max_iterations=10,
@@ -297,7 +297,7 @@ def refactor_duplicated_bug_task() -> BenchmarkTask:
             "shared helper that strips and title-cases a name, use it in "
             "both functions, and make sure the bug is fixed in both places."
         ),
-        allowed_paths=["src/", "tests/"],
+        allowed_paths=["src/"],
         success_criteria=["pytest tests/ exits 0", "ruff check . reports no violations"],
         required_gates=["pytest", "ruff"],
         max_iterations=10,
@@ -352,7 +352,7 @@ def fix_regression_task() -> BenchmarkTask:
             "percentages. Fix it so tests/test_inventory.py passes again, "
             "without breaking the already-passing round-percent case."
         ),
-        allowed_paths=["src/", "tests/"],
+        allowed_paths=["src/"],
         success_criteria=["pytest tests/ exits 0", "ruff check . reports no violations"],
         required_gates=["pytest", "ruff"],
         max_iterations=10,
@@ -402,7 +402,7 @@ def configuration_change_task() -> BenchmarkTask:
             "tests/test_config.py is failing because of this. Update the "
             "config file (not the Python code) so the test passes."
         ),
-        allowed_paths=["config/", "src/", "tests/"],
+        allowed_paths=["config/"],
         success_criteria=["pytest tests/ exits 0", "ruff check . reports no violations"],
         required_gates=["pytest", "ruff"],
         max_iterations=10,
@@ -460,7 +460,7 @@ def fix_documented_contract_task() -> BenchmarkTask:
             "matches its own documented behavior -- do not change the "
             "docstring."
         ),
-        allowed_paths=["src/", "tests/"],
+        allowed_paths=["src/"],
         success_criteria=["pytest tests/ exits 0", "ruff check . reports no violations"],
         required_gates=["pytest", "ruff"],
         max_iterations=10,

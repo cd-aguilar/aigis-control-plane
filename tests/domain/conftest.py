@@ -8,7 +8,7 @@ def contract() -> TaskContract:
     return TaskContract(
         task_id="T01",
         description="Fix failing test in tests/test_math.py",
-        allowed_paths=["src/", "tests/"],
+        allowed_paths=["src/"],
         forbidden_paths=["src/aigis/policy/"],
         success_criteria=["pytest tests/ exits 0"],
         required_gates=["pytest", "ruff"],

@@ -2,11 +2,20 @@
   "task_id": "T07",
   "description": "Per the updated ops runbook, max_retries should be 3, but config/settings.yaml still has it set to 1 -- tests/test_config.py is failing because of this. Update the config file (not the Python code) so the test passes.",
   "allowed_paths": [
-    "config/",
-    "src/",
-    "tests/"
+    "config/"
   ],
   "forbidden_paths": [],
+  "protected_paths": [
+    "tests/",
+    "**/conftest.py",
+    "pytest.ini",
+    ".pytest.ini",
+    "setup.cfg",
+    "tox.ini",
+    "**/pyproject.toml",
+    "**/ruff.toml",
+    "**/.ruff.toml"
+  ],
   "success_criteria": [
     "pytest tests/ exits 0",
     "ruff check . reports no violations"

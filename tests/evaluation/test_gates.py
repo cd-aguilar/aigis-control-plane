@@ -38,6 +38,14 @@ class FakeSandbox:
     def run_command(
         self, executable: str, args: list[str], *, timeout_seconds: int
     ) -> CommandResult:
+        # Plays pytest-json-report: since P0 D3 the gate reads its report
+        # from the --json-report-file path (outside the workspace), never
+        # through read_file -- so the fake writes it there, as pytest would.
+        for arg in args:
+            if arg.startswith("--json-report-file=") and _PYTEST_REPORT_FILE in self.files:
+                Path(arg.split("=", 1)[1]).write_text(
+                    self.files[_PYTEST_REPORT_FILE], encoding="utf-8"
+                )
         return self.command_result
 
     def collect_diff(self) -> str:

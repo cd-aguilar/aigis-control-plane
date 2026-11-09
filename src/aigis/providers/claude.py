@@ -48,6 +48,8 @@ Task ID: {task_id}
 Description: {description}
 Allowed paths: {allowed_paths}
 Forbidden paths: {forbidden_paths}
+Protected paths (read-only, the tests and config that grade your work; \
+"**/" means that file name in any directory): {protected_paths}
 Success criteria: {success_criteria}
 Risk level: {risk_level}
 """
@@ -59,6 +61,7 @@ def build_system_prompt(contract: TaskContract) -> str:
         description=contract.description,
         allowed_paths=", ".join(contract.allowed_paths),
         forbidden_paths=", ".join(contract.forbidden_paths) or "(none)",
+        protected_paths=", ".join(contract.protected_paths) or "(none)",
         success_criteria="; ".join(contract.success_criteria),
         risk_level=contract.risk_level.value,
     )

@@ -12,10 +12,18 @@ La afirmación de seguridad del proyecto es deliberadamente acotada: **"AIGIS re
 
 ## Dos dominios de confianza
 
-- **Dominio del agente (no confiable):** todo lo que el agente puede escribir o hacer ejecutar — el workspace del sandbox, incluidos hoy los tests, la configuración de pytest/ruff, cualquier `conftest.py` y el archivo de reporte del gate, más el código que corre un `run_command`.
-- **Dominio del control plane (confiable):** el contrato, la policy, el repo base de solo lectura y el Decision Engine. Principio del fix del P0: **la decisión solo puede depender de datos que el agente no puede escribir.**
+- **Dominio del agente (no confiable):** todo lo que el agente puede escribir o hacer ejecutar — el workspace del sandbox y el código que corre un `run_command`. Desde D3 **no** incluye los insumos de los gates (ver abajo).
+- **Dominio del control plane (confiable):** el contrato, la policy, el repo base de solo lectura, los insumos protegidos de los gates, el directorio de reportes y el Decision Engine. Principio del fix del P0: **la decisión solo puede depender de datos que el agente no puede escribir.**
 
-Hoy esa frontera no se respeta del todo: el gate de pytest corre en el mismo workspace que dejó el agente, así que **un gate ejecuta código del repo** (tests y `conftest.py`) que el agente pudo modificar, y lee su reporte desde ese mismo workspace. El fix (D3) arma un workspace de evaluación con los archivos protegidos tomados de la base y escribe el reporte fuera del workspace.
+### Insumos de los gates (D3, 9 nov 2026)
+
+- **`protected_paths`** en `TaskContract`. Default: `tests/`, `pytest.ini`, `.pytest.ini`, `setup.cfg`, `tox.ini` en la raíz y, **por nombre en cualquier nivel**, `conftest.py`, `pyproject.toml`, `ruff.toml` y `.ruff.toml`. Los configs de ruff van por nombre porque ruff usa el config más cercano a cada archivo: un `src/ruff.toml` apaga el lint de `src/` aunque el de la raíz siga intacto (verificado con ruff 0.16). Un validador impide que `allowed_paths` se solape con `protected_paths`.
+- **Solo lectura para el agente:** `read_file` sobre un protegido da ALLOW; `patch_file` da DENY `PATH-004`, incluso dentro de un prefijo permitido (`src/conftest.py`).
+- **Workspace de evaluación:** después del turno del agente, el sandbox se reconstruye **desde la base** (menos lo excluido por D2), más los cambios observados del agente fuera de los protegidos. No se copia el workspace del agente para "restaurar" los protegidos, así que un protegido que el agente creó, borró, modificó o reemplazó por un symlink se pierde. Los symlinks que creó el agente tampoco pasan, en ningún path, porque un gate podría seguirlos hasta un archivo del host. Todo cambio de un protegido da FAIL `protected_path_modified`.
+- **Reporte fuera del workspace:** el orquestador crea un directorio de reportes fuera del workspace de evaluación. Pytest escribe ahí y el gate lo lee con una lectura del host, nunca con `sandbox.read_file`, así que un reporte plantado en el workspace se ignora.
+- **Gate que no puede correr → `NEEDS_HUMAN gate_infrastructure_error`:** se distingue por exit code y por la existencia del reporte, nunca por texto. Sin reporte y con exit 126/127 (no encontrado) o 4 (error de uso de pytest, p. ej. falta `pytest-json-report`), o ruff con un exit distinto de 0/1. Un test que falla de verdad (con reporte) sigue siendo FAIL. Un reporte faltante después de que pytest corrió también es FAIL.
+
+**Límite, no garantía:** pytest importa `src/`, así que **el código del agente corre dentro del proceso del gate**. Desde un import puede monkeypatchear pytest, escribir o borrar el archivo de reporte (el directorio está fuera del workspace, pero el proceso tiene permiso de escritura) o alterar lo que reportan los tests. D3 cierra lo que el agente deja escrito en el workspace, no lo que su código hace mientras se lo evalúa. Cerrar eso requiere aislar el proceso que califica del código calificado. D5 (contenedor por defecto) es un paso en esa dirección pero no lo resuelve solo. En modo docker, además, el directorio de reportes todavía no se monta en el contenedor (queda para D5). Hoy eso no cambia el resultado: `python:3.11-slim` no trae pytest, `docker run` sale con 127 (verificado el 9/11) y el gate termina en `gate_infrastructure_error`.
 
 ## Principios de diseño
 

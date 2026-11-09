@@ -103,8 +103,14 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
   `--cap-drop ALL`/`no-new-privileges`, the image is not pinned by digest and
   has no `pytest`/`ruff`, and Linux-native file permissions were never
   tested (known UID issue).
-- **Gates grade agent-writable inputs.** Tests, pytest/ruff config,
-  `conftest.py` and the pytest report all live in the agent's workspace.
+- **The graded code still runs inside the gate.** Since D3, tests,
+  pytest/ruff config and any `conftest.py` are protected (read-only for
+  the agent, always taken from the base repo when the gates run) and the
+  pytest report is written outside the workspace. But pytest imports the
+  agent's code, so that code runs in the gate's process and could still
+  tamper with the run from the inside. Closing that needs process isolation
+  between grader and graded code; it is a documented limit, not a guarantee
+  ([`docs/SECURITY.md`](docs/SECURITY.md)).
 - **Scope is computed from the agent's tool log**, not from the filesystem:
   `scope_ok` and `max_files_changed` only see `patch_file` edits.
 - **Evidence checksums are not tamper-evidence.** `hashes.json` is unsigned;

@@ -73,4 +73,16 @@ class Sandbox(Protocol):
         """
         ...
 
+    def start_evaluation(self, *, protected: Sequence[str]) -> None:
+        """Ends the agent phase (P0 D3): replaces the agent's workspace
+        with an evaluation workspace built from the BASE repo (minus what
+        ``create`` excluded) plus the agent's observed changes outside
+        ``protected``. Anything the agent did to a protected path --
+        modified, created, deleted, symlinked -- is lost; the gates always
+        see the base version. ``run_command`` then runs inside the
+        evaluation workspace. ``changed_paths``/``collect_diff`` must be
+        read before this call.
+        """
+        ...
+
     def destroy(self) -> None: ...

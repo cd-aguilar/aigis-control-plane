@@ -152,6 +152,61 @@ def test_file_changed_outside_scope_is_fail(
     assert decision.scope_ok is False
 
 
+def test_protected_path_change_is_fail_even_when_tracked(
+    engine: DecisionEngine, contract: TaskContract, fresh_state: TaskState
+) -> None:
+    """P0 D3: src/conftest.py is inside allowed 'src/' and went through the
+    tool log, but it is a gate input -> protected_path_modified, FAIL, with
+    green gates (which never saw the change).
+    """
+    fresh_state.files_changed.add("src/conftest.py")
+
+    decision = engine.decide(
+        observed_changes={"src/conftest.py"},
+        run_id="r1",
+        contract=contract,
+        state=fresh_state,
+        gate_results=_passing_gates(),
+    )
+
+    assert decision.final == FinalDecision.FAIL
+    assert decision.scope_ok is False
+    assert "protected_path_modified: ['src/conftest.py']" in decision.reason
+    assert "untracked_modification" not in decision.reason
+
+
+def test_gate_infrastructure_error_is_needs_human_not_fail(
+    engine: DecisionEngine, contract: TaskContract, fresh_state: TaskState
+) -> None:
+    gates = [
+        GateResult(
+            gate_name="pytest",
+            gate_type=GateType.TEST,
+            passed=False,
+            infrastructure_error="pytest exited 127 without a report",
+        ),
+        GateResult(gate_name="ruff", gate_type=GateType.LINT, passed=True),
+    ]
+
+    decision = engine.decide(
+        run_id="r1",
+        contract=contract,
+        state=fresh_state,
+        gate_results=gates,
+        observed_changes=fresh_state.files_changed,
+    )
+
+    assert decision.final == FinalDecision.NEEDS_HUMAN
+    assert "gate_infrastructure_error: ['pytest']" in decision.reason
+
+
+def test_gate_result_with_infrastructure_error_cannot_pass() -> None:
+    with pytest.raises(ValueError, match="infrastructure_error"):
+        GateResult(
+            gate_name="pytest", gate_type=GateType.TEST, passed=True, infrastructure_error="x"
+        )
+
+
 def test_exceeded_limits_is_fail(
     engine: DecisionEngine, contract: TaskContract, fresh_state: TaskState
 ) -> None:
