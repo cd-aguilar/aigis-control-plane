@@ -12,8 +12,8 @@ suficiente, DENY o NEEDS_HUMAN — nunca se concede autoridad implícita"):
 1. Any ``PolicyDecision`` in the run's attempts came back REQUIRE_HUMAN (task
    ``risk_level`` HIGH, per ``policy/engine.py``) → ``NEEDS_HUMAN``,
    regardless of how every other check turned out. A DENY, by contrast, does
-   *not* trigger this — per section 15's example, an agent being correctly
-   blocked and then completing the task legitimately is still a PASS.
+   *not* trigger this rule -- but since P0 D6 a *security* DENY can still
+   turn a would-be PASS into NEEDS_HUMAN (see the end of rule 2).
 2. A required gate has no result at all (couldn't run, crashed before
    producing a report) → ``NEEDS_HUMAN``. This is genuinely different from a
    gate that ran and failed: the Decision Engine has no verdict to trust
@@ -33,6 +33,11 @@ suficiente, DENY o NEEDS_HUMAN — nunca se concede autoridad implícita"):
    verdict does not depend on what it did. A gate that FAILs on a
    control-plane grading rule (``GateResult.rule_violations``: no test
    passed, ``gate_outcome_changed``) names that rule in the FAIL reason.
+   A would-be PASS with a security DENY in the run (``SECURITY_DENY_POLICY_IDS``:
+   PATH-001/002/004) and ``deny_escalation == "security"`` (the default) is
+   NEEDS_HUMAN ``security_deny_escalated`` (P0 D6), with ``policy_ok``
+   False. Any other DENY keeps section 15's semantics: blocked, then
+   completed legitimately, is still PASS.
 3. Otherwise, if any of the six booleans in the Decision formula
    (``contract_valid AND policy_ok AND tests_pass AND lint_pass AND
    scope_ok AND resource_limits_ok``) is False → ``FAIL``. This is a
@@ -46,7 +51,7 @@ from collections.abc import Collection
 
 from aigis.domain import Decision, GateResult, PolicyDecisionType, TaskContract, TaskState
 from aigis.domain.enums import FinalDecision, GateType
-from aigis.policy.engine import path_within_scope
+from aigis.policy.engine import SECURITY_DENY_POLICY_IDS, path_within_scope
 
 
 class DecisionEngine:
@@ -164,6 +169,37 @@ class DecisionEngine:
             and scope_ok
             and resource_limits_ok
         )
+        security_denies = [
+            attempt
+            for attempt in state.attempts
+            if attempt.policy_decision is not None
+            and attempt.policy_decision.decision == PolicyDecisionType.DENY
+            and attempt.policy_decision.policy_id in SECURITY_DENY_POLICY_IDS
+        ]
+        if all_ok and security_denies and contract.deny_escalation == "security":
+            # P0 D6: the run would PASS, but the agent tried something that
+            # is a security signal. A FAIL stays FAIL (handled below);
+            # only a would-be PASS escalates. policy_ok goes False so the
+            # Decision's own invariant (all six True <=> PASS) holds: the
+            # policy is what asks for a human here, as with REQUIRE_HUMAN.
+            denied = [
+                f"{a.policy_decision.policy_id} {a.tool_request.tool.value} "
+                f"{a.tool_request.path or a.tool_request.executable or ''}".rstrip()
+                for a in security_denies
+            ]
+            return self._build(
+                run_id,
+                contract,
+                contract_valid,
+                False,
+                tests_pass,
+                lint_pass,
+                scope_ok,
+                resource_limits_ok,
+                final=FinalDecision.NEEDS_HUMAN,
+                reason=f"security_deny_escalated: {denied} (deny_escalation=security)",
+            )
+
         if not all_ok:
             failed = [
                 name

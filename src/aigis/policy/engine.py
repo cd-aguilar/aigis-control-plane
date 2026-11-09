@@ -44,6 +44,14 @@ from aigis.domain import PolicyDecision, PolicyDecisionType, RiskLevel, ToolName
 from aigis.domain.task_contract import TaskContract
 from aigis.policy.config import PolicyConfig, load_policy_config
 
+# P0 D6: DENYs that are a security signal, not a scope slip. PATH-001
+# (traversal / absolute path: trying to leave the workspace), PATH-002
+# (a forbidden path: the secrets/config the contract fences off) and
+# PATH-004 (patching a protected path: trying to touch the grader). Not
+# PATH-003 (outside allowed_paths, the ordinary "wrong file" mistake) nor
+# CMD-001 (no generic commands exist since D1; asking for one is noise).
+SECURITY_DENY_POLICY_IDS = frozenset({"PATH-001", "PATH-002", "PATH-004"})
+
 _ALLOW = PolicyDecisionType.ALLOW
 _DENY = PolicyDecisionType.DENY
 _REQUIRE_HUMAN = PolicyDecisionType.REQUIRE_HUMAN

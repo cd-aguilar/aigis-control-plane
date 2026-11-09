@@ -242,8 +242,9 @@ diferidos y rechazados, discutidos con Dario en sesión de Cowork:
       `docs/security/P0-design.md`, estado y criterios en `STATUS.md`.
       Hechos: tests de regresión (xfail strict), recorte de claims, CI
       mínima, D4 (`d9933bc`), D2 (`1ac97c0`), D3 (`9279473`, endurecido
-      en `6059126`), D1 (`bdb743c`) y D5 (`d1412fa` + 8b: docker por
-      defecto). Faltan D6 → re-correr el benchmark (en docker). Van 8/9
-      criterios de cierre (falta el 8).
+      en `6059126`), D1 (`bdb743c`), D5 (`d1412fa` + `2a23b11`: docker
+      por defecto) y D6 (commit 9). Falta re-correr el benchmark (en
+      docker, filtrado por `--aigis-commit`). Van 8/9 criterios de cierre
+      (falta el 8). Ya no queda ningún xfail del P0.
 - [ ] Fase 7 (Production Hardening) — explícitamente fuera del alcance
       inicial, no empezar sin decisión explícita

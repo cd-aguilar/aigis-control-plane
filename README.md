@@ -70,10 +70,12 @@ TaskContract → Agent → ToolRequest → Policy Engine → Sandbox → Executi
   SHA-256 checksum of every artifact (detects accidental corruption only:
   unsigned and stored next to the artifacts, so not tamper-evidence).
 - **Decision Engine** — computes `contract_valid ∧ policy_ok ∧ tests_pass ∧
-  lint_pass ∧ scope_ok ∧ resource_limits_ok ⇒ PASS`. A blocked action
-  (`DENY`) doesn't fail the run by itself — the control worked as intended.
-  An ambiguous state (missing gate, `REQUIRE_HUMAN`) escalates to a human
-  instead of guessing.
+  lint_pass ∧ scope_ok ∧ resource_limits_ok ⇒ PASS`. An ordinary blocked
+  action (e.g. a file outside scope) doesn't fail the run by itself — the
+  control worked as intended. A *security* DENY (path traversal, a
+  forbidden path, patching a test or grader config) turns a would-be PASS
+  into `NEEDS_HUMAN` (`deny_escalation`, on by default). An ambiguous state
+  (missing gate, `REQUIRE_HUMAN`) escalates to a human instead of guessing.
 
 Full spec and section-by-section detail:
 **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**. Threat model and OWASP
@@ -178,8 +180,8 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > rate, 4.9 average iterations/tool calls, 10.6s average latency, $0.30
 > total cost, $0.038 cost-to-pass — reported honestly as N=8 (one run each),
 > not a statistically significant benchmark.
-> **426 tests collected (Windows with Docker Desktop: 417 passed, 1 xfailed
-> P0 regression (D6), 8 platform skips), `ruff check` clean.** A minimal CI workflow (pytest + ruff on
+> **437 tests collected (Windows with Docker Desktop: 429 passed, 8 platform
+> skips, no P0 regression left in xfail), `ruff check` clean.** A minimal CI workflow (pytest + ruff on
 > push/PR to `main`) is defined in `.github/workflows/ci.yml`.
 >
 > The initial MVP scope (ARCHITECTURE.md section 21) was completed on

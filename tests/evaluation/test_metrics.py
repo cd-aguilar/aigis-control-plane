@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from aigis.evaluation.metrics import aggregate, aggregate_by_task, load_run
+from aigis.evaluation.metrics import aggregate, aggregate_by_task, filter_runs, load_run
 
 
 def _write_bundle(
@@ -21,6 +21,7 @@ def _write_bundle(
     input_tokens: int | None,
     output_tokens: int | None,
     model: str = "claude-sonnet-5",
+    provenance: dict | None = None,
 ) -> None:
     run_dir.mkdir(parents=True)
     (run_dir / "state.json").write_text(
@@ -42,6 +43,7 @@ def _write_bundle(
                 "model": model,
                 "total_input_tokens": input_tokens,
                 "total_output_tokens": output_tokens,
+                **(provenance or {}),
             }
         )
     )
@@ -345,3 +347,62 @@ def test_aggregate_by_task_success_rate_is_per_task_not_global(tmp_path: Path) -
 
     assert by_task["T03"].success_rate == pytest.approx(0.5)
     assert by_task["T03"].output_tokens_spread is None  # no token data on either run
+
+
+# --- filter_runs (P0 D6: never mix pre-fix and post-fix runs) ------------------
+
+
+def _provenance_runs(tmp_path: Path) -> list:
+    specs = {
+        "pre-fix": ("2026-08-29T10:00:00Z", {}),  # no provenance at all
+        "post-clean": (
+            "2026-11-10T10:00:00Z",
+            {"aigis_commit": "abc1234def", "aigis_dirty": False},
+        ),
+        "post-dirty": (
+            "2026-11-10T11:00:00Z",
+            {"aigis_commit": "abc1234def", "aigis_dirty": True},
+        ),
+        "other-commit": (
+            "2026-11-10T12:00:00Z",
+            {"aigis_commit": "fff0000aaa", "aigis_dirty": False},
+        ),
+    }
+    for run_id, (started_at, provenance) in specs.items():
+        _write_bundle(
+            tmp_path / run_id,
+            run_id=run_id,
+            task_id="T01",
+            final="PASS",
+            iteration=1,
+            tool_calls_count=1,
+            attempts=[],
+            started_at=started_at,
+            input_tokens=None,
+            output_tokens=None,
+            provenance=provenance,
+        )
+    return [load_run(tmp_path / run_id) for run_id in specs]
+
+
+def test_filter_by_aigis_commit_keeps_only_clean_runs_of_that_commit(tmp_path: Path) -> None:
+    runs = _provenance_runs(tmp_path)
+    assert [r.run_id for r in filter_runs(runs, aigis_commit="abc1234")] == ["post-clean"]
+    assert [r.run_id for r in filter_runs(runs, aigis_commit="abc1234", include_dirty=True)] == [
+        "post-clean",
+        "post-dirty",
+    ]
+
+
+def test_filter_since_drops_the_pre_fix_baseline(tmp_path: Path) -> None:
+    from datetime import datetime
+
+    runs = _provenance_runs(tmp_path)
+    kept = filter_runs(runs, since=datetime(2026, 11, 10))
+    assert "pre-fix" not in [r.run_id for r in kept]
+    assert len(kept) == 3
+
+
+def test_filter_without_criteria_is_a_no_op(tmp_path: Path) -> None:
+    runs = _provenance_runs(tmp_path)
+    assert filter_runs(runs) == runs

@@ -6,6 +6,12 @@ metrics for a set of real Evidence Bundles.
     python scripts/aggregate_metrics.py --all --json
     python scripts/aggregate_metrics.py --all --per-task   # grouped by task_id,
                                                             # meaningful once N>1 per task
+    python scripts/aggregate_metrics.py --all --aigis-commit 2a23b11  # one exact code version
+    python scripts/aggregate_metrics.py --all --since 2026-11-10      # runs started after
+
+Post-fix and pre-fix runs live side by side in evidence/: filter them apart
+with --aigis-commit (clean checkouts only, unless --include-dirty) or
+--since, never aggregate them together.
 """
 
 from __future__ import annotations
@@ -13,9 +19,10 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 
-from aigis.evaluation.metrics import aggregate, aggregate_by_task, load_run
+from aigis.evaluation.metrics import aggregate, aggregate_by_task, filter_runs, load_run
 
 
 def _default_evidence_dirs(evidence_root: Path) -> list[Path]:
@@ -54,13 +61,38 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="group by task_id instead of one global aggregate -- see aggregate_by_task",
     )
+    parser.add_argument(
+        "--aigis-commit",
+        help="only runs of this AIGIS commit (prefix ok), from a clean checkout",
+    )
+    parser.add_argument(
+        "--include-dirty",
+        action="store_true",
+        help="with --aigis-commit: also keep runs from a checkout with uncommitted changes",
+    )
+    parser.add_argument(
+        "--since",
+        type=datetime.fromisoformat,
+        help="only runs started at or after this ISO date/time (UTC if no offset)",
+    )
     args = parser.parse_args(argv)
 
     run_dirs = _default_evidence_dirs(args.evidence_root) if args.all else args.run_dirs
     if not run_dirs:
         parser.error("no run directories given -- pass some, or use --all")
 
-    runs = [load_run(d) for d in run_dirs]
+    loaded = [load_run(d) for d in run_dirs]
+    runs = filter_runs(
+        loaded,
+        aigis_commit=args.aigis_commit,
+        since=args.since,
+        include_dirty=args.include_dirty,
+    )
+    if args.aigis_commit is not None or args.since is not None:
+        if not args.json:
+            print(f"filtered: {len(runs)} of {len(loaded)} runs")
+        if not runs:
+            parser.error("no runs left after filtering")
 
     if args.per_task:
         if args.json:

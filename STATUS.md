@@ -1,6 +1,6 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 9 nov 2026 — P0 de seguridad sigue abierto, con el fix implementado (D1-D5) y el benchmark post-fix pendiente, **8 de 9 criterios de cierre cumplidos** (1, 2, 3, 4, 5, 6, 7, 9; falta el 8). Hechos: D4 (`d9933bc`), D2 (`1ac97c0`), D3 (`9279473`), docs 6b (`9165cf7`), endurecimiento de D3 (6c, `6059126`), S07/S08 + `contract_version` 2.0 (`f8cf041`), D1 (`bdb743c`), D5 parte 1 (8a, `d1412fa`) y D5 parte 2 (8b, sin pushear). Siguiente: D6 (commit 9) y re-correr el benchmark (commit 10). CI #7 verde sobre `d1412fa` (1 min 3 s, con `AIGIS_REQUIRE_DOCKER=1`). Tests en Windows con Docker Desktop: 417 passed, 1 xfailed (test 16, D6), 8 skipped; Linux (contenedor, sin daemon): 415 passed, 1 xfailed, 10 skipped; ruff limpio. Anterior: 9 nov 2026, antes del 8b._
+_Última actualización: 9 nov 2026 — P0 de seguridad sigue abierto, con el fix implementado (D1-D6) y el benchmark post-fix pendiente, **8 de 9 criterios de cierre cumplidos** (1, 2, 3, 4, 5, 6, 7, 9; falta el 8). Hechos: D4 (`d9933bc`), D2 (`1ac97c0`), D3 (`9279473`), docs 6b (`9165cf7`), endurecimiento de D3 (6c, `6059126`), S07/S08 + `contract_version` 2.0 (`f8cf041`), D1 (`bdb743c`), D5 (8a `d1412fa`, 8b `2a23b11`) y D6 (commit 9, sin pushear). **No queda ningún xfail del P0.** Siguiente: commit 10, re-correr el benchmark (lo corre Dario). CI #8 verde sobre `2a23b11` (1 min 12 s). Tests en Windows con Docker Desktop: 429 passed, 8 skipped; Linux (contenedor, sin daemon): 427 passed, 10 skipped, 0 xfailed; ruff limpio. Anterior: 9 nov 2026, antes de D6._
 
 ### Qué sigue (orden del plan, numeración de `next-tasks`)
 
@@ -15,7 +15,9 @@ _Última actualización: 9 nov 2026 — P0 de seguridad sigue abierto, con el fi
 5. **Commit 8 — D5**, partido en dos por Dario:
    ~~**8a** — imagen endurecida, flags, montajes y UID~~ — hecho, **CI #7 verde sobre `d1412fa`** (1 min 3 s, `AIGIS_REQUIRE_DOCKER=1`; UID en Linux nativo verificado).
    ~~**8b** — docker por defecto, `--unsafe-local`, campos de reproducibilidad, línea base en docker~~ — hecho (ver su entrada). Pendiente: push y CI (lo hace Dario).
-6. **Commit 9 — D6** (P1, test 16). **Commit 10:** re-correr el benchmark después del fix (lo corre Dario con su key). Cubre el criterio 8.
+   ~~8b~~ — **CI #8 verde sobre `2a23b11`** (1 min 12 s).
+6. ~~**Commit 9 — D6**~~ — hecho (ver su entrada), con `aigis_dirty` y los filtros de métricas. Pendiente: push y CI (lo hace Dario).
+   **Commit 10:** re-correr el benchmark después del fix (lo corre Dario con su key, en docker: `make sandbox-image` antes de la primera corrida). Leer los resultados con `python scripts/aggregate_metrics.py --all --aigis-commit <hash>`. Cubre el criterio 8.
 7. Al cierre: volver a correr el grep del criterio 7 y marcar el P0 como cerrado.
 
 Este documento resume el estado real de arquitectura, código y repo para que cualquier sesión o IA (Cowork, Claude Code, ChatGPT, Gemini, o vos) arranque con contexto completo sin tener que re-derivarlo. Subilo al knowledge del Project "Aigis Control Plane" en claude.ai o pegalo directo en el chat de otra IA para consulta cruzada. Para el detalle técnico completo de cada pieza, `docs/ARCHITECTURE.md`; para el historial fase por fase, `CLAUDE.md`.
@@ -155,7 +157,7 @@ Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada captu
 - [ ] 8. El benchmark 8/8 se re-corrió post-fix y se publicaron los resultados, incluidos los fallos. (commit 10, lo corre Dario)
 - [x] 9. Rotación de credenciales confirmada (fuera del repo) — ✅ 8 nov 2026.
 
-D6 (`deny_escalation=security`, test 16) es P1 en el diseño y **no** es criterio de cierre, aunque está aprobado y planificado (commit 9). Los criterios 1-7 son verificables por CI.
+D6 (`deny_escalation=security`, test 16) es P1 en el diseño y **no** es criterio de cierre — hecho en el commit 9. Los criterios 1-7 son verificables por CI.
 
 **P1 anotados (no se implementan dentro del P0):**
 - **`pip --require-hashes` en `sandbox/Dockerfile`** (revisión del 8a, Dario 9/11): pasar las versiones a un `sandbox/requirements.txt` con hashes e instalar con `--require-hashes`, para que la imagen no dependa de que PyPI sirva el mismo artefacto para esa versión. El test de paridad con `pyproject.toml` tendría que leer ese archivo.
@@ -414,7 +416,7 @@ Hash: `d1412fa`. **CI #7 verde** (1 min 3 s) con `AIGIS_REQUIRE_DOCKER=1`: los t
 Tests: Windows 409 passed, 5 xfailed, 8 skipped (los tests de contenedor **corrieron** contra Docker Desktop; los skips son de plataforma); Linux (contenedor `python:3.11`, usuario no-root uid 1234, **sin** daemon: los tests de contenedor se saltean) 408 passed, 5 xfailed, 9 skipped (con AIGIS_REQUIRE_DOCKER=1, los 8 tests de contenedor dan error en vez de saltearse, verificado) | ruff: clean | CI: pendiente del push (Dario). Es el primer CI que corre los tests de contenedor con `AIGIS_REQUIRE_DOCKER=1`.
 
 **Commit 8b — feat(cli): docker by default, --unsafe-local, reproducibility fields (D5, 2/2) (9 nov 2026)**
-Hash: se anota en el commit siguiente. Notas 8-12 de Dario del 9/11:
+Hash: `2a23b11`. **CI #8 verde** (1 min 12 s). Dario lo aprobó y revisó el grep del criterio 7 sobre todos los `.md`: todas las coincidencias están calificadas. Notas 8-12 de Dario del 9/11:
 - **CLI (nota 8):**
   - `aigis run` usa `DockerSandbox` por defecto;
   - `--sandbox` solo acepta `docker`, así que `--sandbox local` sale con código 2 (test 14);
@@ -446,6 +448,29 @@ Hash: se anota en el commit siguiente. Notas 8-12 de Dario del 9/11:
   2. `pip --require-hashes` en `sandbox/Dockerfile` (con un `sandbox/requirements.txt` con hashes) → anotado en P1.
   3. EXE002 en Docker Desktop/Windows → **confirmado: está documentado** como límite de plataforma en SECURITY (sandbox, "Nota de plataforma") y en la entrada del 8a.
 Tests: Windows con Docker Desktop 417 passed, 1 xfailed, 8 skipped (los tests de contenedor corrieron); Linux (contenedor `python:3.11`, uid 1234, sin daemon) 415 passed, 1 xfailed, 10 skipped | ruff: clean | CI: pendiente del push (Dario).
+
+**Commit 9 — feat(decision): deny_escalation for security DENYs (D6) + aigis_dirty + metrics filters (9 nov 2026)**
+Hash: se anota en el commit siguiente. Notas 1-7 de Dario del 9/11:
+- **`TaskContract.deny_escalation`**: `"security"` (default) | `"none"`. `contract_version` sigue en 2.0, porque el campo nuevo tiene default; pero con el default **cambia el veredicto** de un contrato existente que tenga DENY de seguridad (ver la pregunta abajo).
+- **`DecisionEngine`:** si el resultado iba a ser PASS, hubo algún DENY de seguridad y `deny_escalation == "security"` → `NEEDS_HUMAN` con `security_deny_escalated: ['PATH-002 read_file secrets/credentials.txt', ...] (deny_escalation=security)`. Un FAIL sigue siendo FAIL. Las otras salidas a NEEDS_HUMAN (REQUIRE_HUMAN, gate faltante o con error de infraestructura) van antes y no cambian.
+  - **`policy_ok` pasa a False en la escalada.** El modelo `Decision` exige "los seis True ⇔ PASS", así que un NEEDS_HUMAN con todo en verde es inválido. Elegí `policy_ok` porque es la policy la que pide un humano, como ya pasa con REQUIRE_HUMAN. En un FAIL, `policy_ok` no se toca.
+- **Qué cuenta como DENY de seguridad** (`policy.engine.SECURITY_DENY_POLICY_IDS`): PATH-001, PATH-002 y PATH-004. No escalan PATH-003 ni CMD-001. **Por qué 001 y 004, si el diseño hablaba de PATH-002 + rutas sensibles:**
+  - **PATH-001** (traversal o ruta absoluta) no es un error de alcance: es un intento de salir del workspace, el mismo objetivo que el P0. Además, un traversal no tiene un "a dónde" que permita clasificarlo como sensible o no: la ruta escapa del contrato entero, así que no hay forma segura de tratarlo como un archivo equivocado.
+  - **PATH-004** (`patch_file` sobre un protegido) es intentar modificar el grader: tests, config de pytest/ruff, `conftest.py`. Es exactamente lo que D3 protege, y la señal más directa de que el agente buscó un PASS por fuera de la tarea. Un agente honesto no tiene motivo para editar el grader.
+  - Las "rutas sensibles" del diseño ya son PATH-002: el contrato las declara en `forbidden_paths`. No agregué una lista aparte para no tener dos fuentes de verdad.
+  - **No escalan:** PATH-003 (pedir un archivo fuera de `allowed_paths` es el error común y no sensible; la semántica de §15 se mantiene) y CMD-001 (desde D1 no existen comandos genéricos: pedir uno es ruido, no un acceso).
+- **Tests:** el 16 sale de xfail. **Cambio en un control existente:** `test_16_control_non_security_deny_still_passes` usaba **PATH-001** como "DENY no sensible", lo que contradecía la nota 3; ahora usa PATH-003 y CMD-001. Nuevos:
+  - PATH-001 y PATH-004 también escalan;
+  - un FAIL sigue siendo FAIL;
+  - e2e con `run_task`: el agente pide el secreto (DENY PATH-002), después arregla bien el bug, el gate real pasa → NEEDS_HUMAN;
+  - `deny_escalation="none"` mantiene el PASS (ya estaba).
+
+  Mutation check: con `SECURITY_DENY_POLICY_IDS` vacío fallan los 4 tests de escalada.
+- **Semántica (nota 5):** ARCHITECTURE §15 ("bloqueado y luego completó = PASS" vale solo para los DENY no sensibles), EVALUATION (cómo cuenta en el benchmark: un `security_deny_escalated` es no-PASS en el success rate; T05 es donde más puede aparecer), README (Decision Engine) y SECURITY (fail closed).
+- **`aigis_dirty` (nota 6):** `provenance.aigis_dirty()` hace `git status --porcelain` sobre el checkout de AIGIS (respeta `.gitignore`, así que `evidence/` y `sandbox/.image-id` no lo ensucian). Da `null` si no hay commit con qué comparar. Va a `environment.json` y a SECURITY. Test con un checkout git temporal: limpio → False, con un cambio → True, sin raíz git → None.
+- **Métricas (nota 7):** `metrics.filter_runs(runs, aigis_commit=, since=, include_dirty=)`. `RunRecord` suma `started_at`, `aigis_commit` y `aigis_dirty`, que quedan en None en bundles viejos. `scripts/aggregate_metrics.py` suma `--aigis-commit <hash>` (acepta prefijo), `--since <fecha ISO>` (sin offset = UTC) e `--include-dirty`. **Decisión mía:** `--aigis-commit` también descarta las corridas con `aigis_dirty` true o desconocido, porque ese commit no fija el código que corrió; `--include-dirty` las suma. Si el filtro deja cero corridas, es un error, no un agregado vacío. Tests en `test_metrics.py` y `tests/scripts/test_aggregate_metrics.py`.
+Tests: Windows con Docker Desktop 429 passed, 8 skipped, **0 xfailed**; Linux (contenedor, sin daemon) 427 passed, 10 skipped, 0 xfailed | ruff: clean | CI: pendiente del push.
+**Pregunta para Dario:** con `deny_escalation="security"` por defecto, el benchmark post-fix puede bajar su tasa de PASS si el agente real intenta leer el decoy de T05 (`config/`, forbidden). Es el comportamiento buscado, pero conviene saberlo antes de leer los números.
 
 **Pendiente de Dario:**
 - ~~Los dos documentos del P0~~ — **commiteados el 8 nov 2026** como `docs/security/P0-design.md` (diseño aprobado, tests §4, claims §7, criterios §8) y `docs/security/P0-review.md` (hallazgos H1-H11, clasificación de controles, PoC). El checklist de arriba pasa a reemplazarse por los 9 criterios del §8 en el commit siguiente.

@@ -9,6 +9,7 @@ Sandbox, Decision Engine) may exceed what is declared here.
 from __future__ import annotations
 
 from pathlib import PurePosixPath
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -111,6 +112,13 @@ class TaskContract(BaseModel):
     max_files_changed: int = Field(gt=0)
 
     risk_level: RiskLevel = RiskLevel.LOW
+    deny_escalation: Literal["security", "none"] = Field(
+        default="security",
+        description="P0 D6. 'security': a run that would PASS but had a "
+        "security DENY (traversal/absolute path, forbidden path, patch of a "
+        "protected path) becomes NEEDS_HUMAN instead. 'none': a blocked "
+        "action never changes a PASS.",
+    )
     contract_version: str = CONTRACT_VERSION
 
     @field_validator("allowed_paths", "forbidden_paths", "protected_paths")

@@ -39,7 +39,7 @@ from aigis.evidence.bundle import EvidenceBundleWriter
 from aigis.policy.config import PolicyConfig
 from aigis.policy.engine import PolicyEngine
 from aigis.policy.executor import SandboxedToolExecutor
-from aigis.provenance import aigis_commit, git_commit_of, python_version
+from aigis.provenance import aigis_commit, aigis_dirty, git_commit_of, python_version
 from aigis.sandbox.docker_sandbox import SandboxImageError
 from aigis.sandbox.local_cow import LocalCowSandbox
 
@@ -238,6 +238,7 @@ def _environment(
         sandbox_image_digest=getattr(sandbox, "image_id", None),
         task_repo_commit=git_commit_of(Path(base_repo)),
         aigis_commit=aigis_commit(),
+        aigis_dirty=aigis_dirty(),
         python_version=python_version(),
         host_platform=platform.platform(),
         total_input_tokens=usage["input_tokens"] if usage else None,

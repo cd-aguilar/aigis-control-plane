@@ -50,6 +50,9 @@ class EnvironmentMetadata(BaseModel):
     isolation: str | None = None
     task_repo_commit: str | None = None
     aigis_commit: str | None = None
+    # True: uncommitted changes in the AIGIS checkout, so aigis_commit does
+    # not pin the exact code that ran (P0 D6 commit, for the benchmark).
+    aigis_dirty: bool | None = None
     sandbox_image: str | None = None
     sandbox_image_digest: str | None = None
     python_version: str | None = None

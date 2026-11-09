@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Anthropic list pricing, USD per million tokens. Update this table if it
@@ -43,6 +43,11 @@ class RunRecord:
     input_tokens: int | None
     output_tokens: int | None
     model: str | None
+    # Provenance (P0 D5/D6), None for bundles written before it existed --
+    # e.g. the pre-fix 8/8 baseline. Used by filter_runs().
+    started_at: datetime | None = None
+    aigis_commit: str | None = None
+    aigis_dirty: bool | None = None
 
     @property
     def cost_usd(self) -> float | None:
@@ -86,7 +91,41 @@ def load_run(run_dir: Path) -> RunRecord:
         input_tokens=environment.get("total_input_tokens"),
         output_tokens=environment.get("total_output_tokens"),
         model=environment.get("model"),
+        started_at=_parse_timestamp(state["started_at"]) if state.get("started_at") else None,
+        aigis_commit=environment.get("aigis_commit"),
+        aigis_dirty=environment.get("aigis_dirty"),
     )
+
+
+def filter_runs(
+    runs: list[RunRecord],
+    *,
+    aigis_commit: str | None = None,
+    since: datetime | None = None,
+    include_dirty: bool = False,
+) -> list[RunRecord]:
+    """Keeps only the runs that belong together, so pre-fix and post-fix
+    runs never mix in one aggregate.
+
+    - ``aigis_commit``: the run's ``aigis_commit`` starts with this (a short
+      hash works). Runs from a dirty checkout -- or whose cleanliness is
+      unknown -- are dropped too, since that commit does not pin the code
+      that ran, unless ``include_dirty``.
+    - ``since``: the run started at or after this moment (naive = UTC).
+    """
+    kept = runs
+    if aigis_commit is not None:
+        kept = [
+            run
+            for run in kept
+            if run.aigis_commit is not None
+            and run.aigis_commit.startswith(aigis_commit)
+            and (include_dirty or run.aigis_dirty is False)
+        ]
+    if since is not None:
+        moment = since if since.tzinfo is not None else since.replace(tzinfo=timezone.utc)
+        kept = [run for run in kept if run.started_at is not None and run.started_at >= moment]
+    return kept
 
 
 def _avg(values: list[float]) -> float | None:
@@ -220,4 +259,5 @@ __all__ = [
     "load_run",
     "aggregate",
     "aggregate_by_task",
+    "filter_runs",
 ]

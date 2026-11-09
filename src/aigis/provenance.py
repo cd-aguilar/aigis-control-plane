@@ -54,10 +54,23 @@ def aigis_commit() -> str | None:
     return git_commit_of(_AIGIS_ROOT)
 
 
+def aigis_dirty() -> bool | None:
+    """True if the AIGIS checkout has uncommitted changes (tracked or
+    untracked, .gitignore respected), so ``aigis_commit`` alone does not
+    identify the code that ran. None when there is no commit to compare
+    against (not a git root, no git)."""
+    if aigis_commit() is None:
+        return None
+    status = _git(_AIGIS_ROOT, "status", "--porcelain")
+    if status is None:
+        return None
+    return status != ""
+
+
 def python_version() -> str:
     """The control plane's interpreter. In docker mode the graded code runs
     on the sandbox image's interpreter, identified by ``sandbox_image_digest``."""
     return platform.python_version()
 
 
-__all__ = ["aigis_commit", "git_commit_of", "python_version"]
+__all__ = ["aigis_commit", "aigis_dirty", "git_commit_of", "python_version"]
