@@ -1,18 +1,34 @@
-# Default command allowlist for the AIGIS Policy Engine.
+# Default policy for the AIGIS Policy Engine.
 #
 # ARCHITECTURE.md section 10: the Policy Engine is "determinista y externo
 # al LLM" -- this file is that determinism made editable without touching
-# code. Anything NOT listed here is DENYed by default (policy_id CMD-001)
-# the moment a ToolRequest tries to run it as `executable` -- see
-# policy/engine.py::PolicyEngine._evaluate_command.
+# code.
 #
-# Keep this list to exactly what the eval suite's tasks need (pytest, ruff,
-# a python interpreter). Least privilege (section 3.4): it is easier to add
-# an executable here later than to explain why the agent could run one it
-# never needed.
+# P0 D1 (2026-11-09): the agent no longer gets a generic command tool.
+#
+# - `profiles` are the only commands the agent can make the control plane
+#   run, through the run_tests / run_lint tools. Each one is fixed: id,
+#   executable, argv and timeout. The agent supplies nothing but, for
+#   run_tests, an optional path inside allowed_paths or protected_paths.
+#   run_tests is the same invocation PytestGate grades with, and run_lint
+#   the same as RuffGate's normal check (tests/policy/test_config.py keeps
+#   them in sync). The executor appends what is per-run, not policy: the
+#   test target and the report file, which lives outside the workspace.
+#
+# - `allowed_commands` is the generic RUN_COMMAND allowlist, kept only for
+#   compatibility. Empty by default: every RUN_COMMAND is DENY CMD-001. An
+#   interpreter here (python) means arbitrary code execution in the
+#   workspace -- that was the P0.
 
-allowed_commands:
-  - python
-  - python3
-  - pytest
-  - ruff
+allowed_commands: []
+
+profiles:
+  - id: run_tests
+    executable: pytest
+    argv: ["-q", "--json-report"]
+    default_target: tests/
+    timeout_seconds: 120
+  - id: run_lint
+    executable: ruff
+    argv: ["check", ".", "--output-format", "json"]
+    timeout_seconds: 60

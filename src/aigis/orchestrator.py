@@ -27,6 +27,7 @@ from aigis.domain import Decision, EnvironmentMetadata, Evidence, TaskContract, 
 from aigis.evaluation.decision_engine import DecisionEngine
 from aigis.evaluation.gates import GateContext, PytestGate, QualityGate, RuffGate
 from aigis.evidence.bundle import EvidenceBundleWriter
+from aigis.policy.config import PolicyConfig
 from aigis.policy.engine import PolicyEngine
 from aigis.policy.executor import SandboxedToolExecutor
 from aigis.sandbox.local_cow import LocalCowSandbox
@@ -49,6 +50,7 @@ def run_task(
     run_id: str | None = None,
     model_provider: str = "unknown",
     model: str = "unknown",
+    policy_config: PolicyConfig | None = None,
 ) -> tuple[TaskState, Decision, Evidence]:
     """Runs one task end to end and returns ``(state, decision, evidence)``.
 
@@ -56,6 +58,10 @@ def run_task(
     that doesn't require ``ruff`` shouldn't pay for it (or have it show up
     as a spurious NEEDS_HUMAN for a gate nobody asked for; see
     ``DecisionEngine``'s handling of missing required gates).
+
+    ``policy_config`` defaults to the bundled ``policy.yaml``; passing one is
+    how a test checks the layers behind the Policy Engine (D2-D4) with a
+    deliberately permissive policy.
     """
     run_id = run_id or f"run-{uuid.uuid4().hex[:12]}"
     selected = [gate for gate in gates if gate.gate_name in contract.required_gates]
@@ -82,7 +88,7 @@ def run_task(
     sandbox.create(exclude=contract.forbidden_paths)
     excluded_paths = list(getattr(sandbox, "excluded_paths", []))
     try:
-        executor = SandboxedToolExecutor(PolicyEngine(contract), sandbox)
+        executor = SandboxedToolExecutor(PolicyEngine(contract, policy_config), sandbox)
         runtime = AgentRuntime(contract, provider, executor)
         state = TaskState(run_id=run_id, task_id=contract.task_id)
         runtime.run(state)

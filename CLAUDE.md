@@ -241,7 +241,8 @@ diferidos y rechazados, discutidos con Dario en sesión de Cowork:
       bypass de scope vía `run_command`. Diseño en
       `docs/security/P0-design.md`, estado y criterios en `STATUS.md`.
       Hechos: tests de regresión (xfail strict), recorte de claims, CI
-      mínima, D4 (`d9933bc`), D2 (`1ac97c0`) y D3 (`9279473`). Faltan
-      D1 → D5 → D6 → re-correr el benchmark. Van 5/9 criterios de cierre.
+      mínima, D4 (`d9933bc`), D2 (`1ac97c0`), D3 (`9279473`, endurecido
+      en `6059126`) y D1 (commit 7). Faltan D5 → D6 → re-correr el
+      benchmark. Van 6/9 criterios de cierre.
 - [ ] Fase 7 (Production Hardening) — explícitamente fuera del alcance
       inicial, no empezar sin decisión explícita

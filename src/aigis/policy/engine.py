@@ -19,8 +19,16 @@ Rule order (fail closed, section 3.6 -- the first matching rule wins):
    outright (PATH-001), then ``forbidden_paths`` (PATH-002), then
    ``protected_paths`` (read ALLOW, patch DENY PATH-004), then
    ``allowed_paths`` (PATH-003, deny-by-default if nothing matches).
-3. RUN_COMMAND: argv path-traversal in any argument (CMD-002), then the
-   command allowlist (CMD-001, deny-by-default).
+3. RUN_TESTS / RUN_LINT (P0 D1): the tool's fixed profile must exist in
+   ``policy.yaml`` (PROF-001 otherwise). RUN_TESTS may name a ``path``:
+   traversal/absolute (PATH-001) and ``forbidden_paths`` (PATH-002) are
+   denied; it must be inside ``allowed_paths`` or ``protected_paths``
+   (tests are read-only for the agent, but running them is reading them),
+   PATH-003 otherwise. ALLOW is PROF-000.
+4. RUN_COMMAND (compatibility only): argv path-traversal in any argument
+   (CMD-002), then the generic allowlist (CMD-001, deny-by-default). The
+   allowlist is empty by default since P0 D1, so every RUN_COMMAND is
+   CMD-001 unless a deployment opts back in.
 
 A DENY or REQUIRE_HUMAN here is not a system failure -- per section 15/17,
 an agent attempting (and being blocked from) an unauthorized action is
@@ -130,6 +138,8 @@ class PolicyEngine:
 
         if request.tool in (ToolName.READ_FILE, ToolName.PATCH_FILE):
             return self._evaluate_path(request)
+        if request.tool in (ToolName.RUN_TESTS, ToolName.RUN_LINT):
+            return self._evaluate_profile(request)
         if request.tool == ToolName.RUN_COMMAND:
             return self._evaluate_command(request)
         raise TypeError(f"unhandled tool: {request.tool!r}")  # pragma: no cover
@@ -208,6 +218,63 @@ class PolicyEngine:
             _ALLOW,
             "PATH-000",
             f"'{path}' is within allowed_paths",
+            self.contract.risk_level,
+        )
+
+    def _evaluate_profile(self, request: ToolRequest) -> PolicyDecision:
+        profile_id = request.tool.value
+        profile = self.config.profile(profile_id)
+        if profile is None:
+            return self._decision(
+                request,
+                _DENY,
+                "PROF-001",
+                f"no '{profile_id}' profile in the policy",
+                RiskLevel.HIGH,
+            )
+        path = request.path
+        if path is not None:
+            if _is_traversal_or_absolute(path):
+                return self._decision(
+                    request,
+                    _DENY,
+                    "PATH-001",
+                    f"'{path}' is an absolute path or contains '..' (path traversal)",
+                    RiskLevel.HIGH,
+                )
+            # A pytest node id ("tests/test_x.py::test_y") is scoped by its
+            # file part.
+            file_part = path.split("::", 1)[0]
+            forbidden = next(
+                (p for p in self.contract.forbidden_paths if _matches_prefix(file_part, p)),
+                None,
+            )
+            if forbidden is not None:
+                return self._decision(
+                    request,
+                    _DENY,
+                    "PATH-002",
+                    f"'{path}' is inside forbidden path '{forbidden}'",
+                    RiskLevel.HIGH,
+                )
+            in_scope = self.contract.is_protected(file_part) or any(
+                _matches_prefix(file_part, p) for p in self.contract.allowed_paths
+            )
+            if not in_scope:
+                return self._decision(
+                    request,
+                    _DENY,
+                    "PATH-003",
+                    f"'{path}' is outside allowed_paths {self.contract.allowed_paths} "
+                    "and protected_paths",
+                    RiskLevel.HIGH,
+                )
+        target = f" on '{path}'" if path is not None else ""
+        return self._decision(
+            request,
+            _ALLOW,
+            "PROF-000",
+            f"fixed profile '{profile_id}' ({profile.executable}){target}",
             self.contract.risk_level,
         )
 

@@ -42,7 +42,14 @@ class ToolRequest(BaseModel):
     matching ``tool``:
       - READ_FILE: ``path``
       - PATCH_FILE: ``path``, ``old_str``, ``new_str``
-      - RUN_COMMAND: ``executable``, ``args``
+      - RUN_TESTS: optional ``path`` (a test file/dir/node id to narrow
+        the run); nothing else
+      - RUN_LINT: nothing
+      - RUN_COMMAND: ``executable``, ``args`` (compatibility only, P0 D1)
+
+    RUN_TESTS/RUN_LINT reject every field they do not use: there is no way
+    to smuggle a flag (``-k``, ``--fix``, ``--config``) or another
+    executable through them.
     """
 
     model_config = {"frozen": True}
@@ -75,6 +82,29 @@ class ToolRequest(BaseModel):
                 raise ValueError("PATCH_FILE requires 'old_str' and 'new_str'")
             if self.old_str == self.new_str:
                 raise ValueError("PATCH_FILE old_str and new_str must differ")
+        elif self.tool in (ToolName.RUN_TESTS, ToolName.RUN_LINT):
+            stray = [
+                name
+                for name, value in (
+                    ("executable", self.executable),
+                    ("args", self.args or None),
+                    ("old_str", self.old_str),
+                    ("new_str", self.new_str),
+                    ("path", self.path if self.tool == ToolName.RUN_LINT else None),
+                )
+                if value is not None
+            ]
+            if stray:
+                raise ValueError(
+                    f"{self.tool.value} runs a fixed profile and takes no {stray}"
+                )
+            if self.path is not None and not self.path.strip():
+                raise ValueError("RUN_TESTS 'path' must not be blank")
+            if self.path is not None and self.path.lstrip().startswith("-"):
+                # pytest would read it as a flag (e.g. "-p plugin"), and a
+                # permissive allowed_paths entry like "." would let it through
+                # the prefix check.
+                raise ValueError("RUN_TESTS 'path' must not start with '-'")
         elif self.tool == ToolName.RUN_COMMAND:
             if not self.executable:
                 raise ValueError("RUN_COMMAND requires 'executable'")

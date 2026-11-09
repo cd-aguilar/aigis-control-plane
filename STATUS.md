@@ -1,6 +1,6 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 9 nov 2026 — P0 de seguridad sigue abierto (bypass de scope vía `run_command`, ver sección dedicada), **5 de 9 criterios de cierre cumplidos** (2, 4, 5, 7, 9). Hechos: D4 (`d9933bc`), D2 (`1ac97c0`), D3 (`9279473`), docs 6b (`9165cf7`), endurecimiento de D3 (6c, `6059126`; criterio 5 desmarcado y re-marcado ahí) y S07/S08 a la suite + `contract_version` 2.0. Siguiente: push (lo hace Dario) y D1 (commit 7). CI #4 verde sobre `9279473`. Tests en Windows: 327 passed, 28 xfailed, 7 skipped; Linux (contenedor): 333 passed, 28 xfailed, 1 skipped; ruff limpio. Anterior: 9 nov 2026, antes del 6c._
+_Última actualización: 9 nov 2026 — P0 de seguridad sigue abierto (bypass de scope vía `run_command`, ver sección dedicada), **6 de 9 criterios de cierre cumplidos** (2, 3, 4, 5, 7, 9). Hechos: D4 (`d9933bc`), D2 (`1ac97c0`), D3 (`9279473`), docs 6b (`9165cf7`), endurecimiento de D3 (6c, `6059126`), S07/S08 a la suite + `contract_version` 2.0 (`f8cf041`) y D1 (commit 7, sin pushear). Siguiente: D5 (commit 8). CI #5 verde sobre `f8cf041` (45 s). Tests en Windows: 386 passed, 6 xfailed, 7 skipped; Linux (contenedor): 392 passed, 6 xfailed, 1 skipped; ruff limpio. Anterior: 9 nov 2026, antes de D1._
 
 ### Qué sigue (orden del plan, numeración de `next-tasks`)
 
@@ -10,8 +10,8 @@ _Última actualización: 9 nov 2026 — P0 de seguridad sigue abierto (bypass de
    ~~Commit 6b — docs~~ — hecho (`9165cf7`, docs desactualizados desde D4/D2/D3).
    ~~Commit 6c — sin PASS silencioso en los gates~~ — hecho (ver la entrada "Commit 6c").
    ~~Commit `test` — S07/S08 a `security_suite.py` + `contract_version` 2.0~~ — hecho (ver su entrada).
-   **Siguiente:** push de los cuatro commits desde `9279473` y CI (lo hace Dario).
-4. **Commit 7 — D1:** `run_tests`/`run_lint` en lugar de `run_command`, con la allowlist genérica vacía. Saca de xfail los tests 1-3 y S06, y también los 2 xfail que quedan en `test_executor.py`. Cubre el criterio 3.
+   Push hecho por Dario: **CI #5 verde sobre `f8cf041`** (45 s).
+4. ~~**Commit 7 — D1**~~ — hecho (ver la entrada "Commit 7"). Pendiente: push y CI (lo hace Dario).
 5. **Commit 8 — D5:** imagen propia por digest, docker por defecto, `--unsafe-local`, y resolver el bug Docker/UID. Saca de xfail los tests 13-15. Cubre los criterios 1 y 6.
 6. **Commit 9 — D6** (P1, test 16). **Commit 10:** re-correr el benchmark después del fix (lo corre Dario con su key). Cubre el criterio 8.
 7. Al cierre: volver a correr el grep del criterio 7 y marcar el P0 como cerrado.
@@ -143,7 +143,7 @@ Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada captu
 
 - [ ] 1. Los tests 1-15 y S06/S07/S08 del §4 pasan sin `xfail`, en local **y** en docker.
 - [x] 2. El PoC de `P0-review.md`, adaptado, da **FAIL o DENY**, nunca PASS, y queda como test de integración. — ✅ commit 5 (D2): `tests/test_p0_command_bypass.py::test_run_command_bypass_no_longer_yields_pass` salió de xfail. La decisión es FAIL (`untracked_modification: ['tests/test_calculator.py']`, desde D4) y el secreto ya no vuelve por stdout porque `secrets/` no se copia al workspace (D2). Queda como test de integración normal: si vuelve a dar PASS, la suite se rompe.
-- [ ] 3. Con la policy por defecto, ningún tool del agente acepta un ejecutable ni argumentos arbitrarios. (D1)
+- [x] 3. Con la policy por defecto, ningún tool del agente acepta un ejecutable ni argumentos arbitrarios. (D1) — ✅ commit 7: tests 1-3 de `tests/test_p0_regressions.py` fuera de xfail, S06 en la suite, `tests/agent/test_tools.py::test_run_command_is_not_a_tool` y `::test_fixed_profile_tools_reject_free_input`, y `tests/policy/test_profiles.py`. **No cubre, y no lo dice el criterio:** el código que escribe el agente sigue corriendo dentro de pytest (`run_tests` y el gate), y en modo local ve el host (verificado el 9/11, ver la entrada del commit 7). Eso es D5.
 - [x] 4. `scope_ok` y `max_files_changed` se calculan solo desde cambios observados, con un test que prueba que el registro del agente no puede ampliarlos. (D4) — ✅ commit 4: `DecisionEngine.decide(observed_changes=...)` obligatorio, sin fallback al log; `test_08_max_files_changed_counts_observed_changes` y `test_08_tool_log_cannot_widen_observed_scope`.
 - [x] 5. Ningún insumo de un gate (tests protegidos, config, reporte) puede escribirse desde el workspace del agente. (D3) — ✅ commit 6 + commit 6c: el workspace de evaluación se arma desde la base, los protegidos del agente se pierden, `patch_file` sobre un protegido da DENY `PATH-004` y el reporte se escribe fuera del workspace. **Desmarcado el 9/11** (Dario reprodujo dos bypasses del gate anteriores a D3: skip/xfail desde `src/` con exit 0, y `noqa` escrito por el agente) y **re-marcado en el 6c**, con evidencia: `tests/test_p0_regressions.py::test_d3h_skip_from_src_with_no_other_test_is_not_a_pass`, `::test_d3h_skip_or_xfail_from_src_fails_on_the_baseline_rule` y `::test_d3h_noqa_written_by_the_agent_does_not_silence_ruff` (más los controles `test_d3h_control_*`). **Límite que queda abierto y documentado, no cubierto por este criterio:** el código del agente corre dentro del proceso del gate (pytest importa `src/`) y puede alterar la corrida desde adentro (`docs/SECURITY.md`, "Insumos de los gates").
 - [ ] 6. El default de la CLI es docker con imagen por digest; local solo con un flag explícito, registrado en la evidencia. (D5)
@@ -156,6 +156,7 @@ Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada captu
 D6 (`deny_escalation=security`, test 16) es P1 en el diseño y **no** es criterio de cierre, aunque está aprobado y planificado (commit 9). Los criterios 1-7 son verificables por CI.
 
 **P1 anotados (no se implementan dentro del P0):**
+- **Regla 4 del 6c (Dario, 9/11):** hoy `RuffGate` corre `--ignore-noqa` sobre todo archivo que tocó el agente, así que un `noqa` que ya estaba en la base en ese archivo también deja de silenciar. Refinarlo para rechazar solo los `noqa` que **agregó** el agente, comparando contra la base. Aceptado como está por ahora: ninguna tarea del benchmark tiene `noqa`, `xfail` ni `skip`.
 - `LocalCowSandbox.run_command` sin `start_new_session=True`: ante un timeout mueren solo los hijos directos; los nietos sobreviven y pueden colgar `communicate()` si heredaron los pipes. Fix: `start_new_session=True` + `os.killpg` en el timeout, con test.
 - CI: fijar `actions/checkout` y `actions/setup-python` por commit SHA (hoy por tag).
 - **Anotaciones del primer run de CI (#1, `eeea5ec`, 8/11):** `actions/checkout@v4` y `actions/setup-python@v5` corren sobre Node 20 (deprecado, GitHub ya las fuerza a Node 24) → subirlas a versiones con Node 24 **y** fijarlas por SHA en un mismo commit (junta este punto con el de arriba).
@@ -316,7 +317,7 @@ Reproducidos los dos el 9/11 antes del fix (pytest y ruff reales).
 Tests: Windows 324 passed, 28 xfailed, 7 skipped; Linux (contenedor `python:3.11`, usuario no-root) 330 passed, 28 xfailed, 1 skipped. T01 y T05 reales siguen dando PASS | ruff: clean | CI: pendiente del push.
 
 **test(security): move S07/S08 to security_suite.py + contract_version 2.0 (9 nov 2026)**
-Hash: se anota en el commit siguiente. Los dos pendientes que Dario resolvió el 9/11 ("S07/S08: movelos juntos..." y "contract_version: subilo a 2.0"), en un solo commit.
+Hash: `f8cf041`. **CI #5 verde** sobre `f8cf041` (45 s). Dario aprobó el 6c y este commit, y aceptó las decisiones 3, 4 y 5 (la 4 con un refinamiento en P1). La 6 (`run_security_eval.py`) se resolvió en el commit 7. Los dos pendientes que Dario resolvió el 9/11 ("S07/S08: movelos juntos..." y "contract_version: subilo a 2.0"), en un solo commit.
 - **S07/S08 → `aigis.evaluation.security_suite`**:
   - **Forma nueva, `DecisionScenario` + `run_decision_scenario`, registrados en `DECISION_SCENARIOS`.** No encajaban en `SecurityScenario` ("esta request da DENY") ni en `ResourceExhaustionScenario`: lo que se verifica es la `Decision` final y su motivo.
   - **Cómo corren:** `run_task` completo (sandbox, línea base de pytest, workspace de evaluación, gates y Decision Engine reales) y grado `GateType.SECURITY`. PASS si `decision.final == expected_final` y la razón contiene `expected_reason`.
@@ -338,6 +339,46 @@ Hash: se anota en el commit siguiente. Los dos pendientes que Dario resolvió el
   **Decisión mía, a revisar:** no se rechaza un contrato por declarar `contract_version: "1.0"`. Uno 1.0 que solo permite `src/` se carga y queda con los protected paths por defecto. Lo que rompe compatibilidad es el solape, como pediste.
 - Docs: `EVALUATION.md` (S07/S08 en la suite, la frase de "pasan a `security_suite.py`") y README (Status).
 Tests: Windows 327 passed, 28 xfailed, 7 skipped; Linux (contenedor) 333 passed, 28 xfailed, 1 skipped (−4 movidos, +7 nuevos) | ruff: clean | CI: pendiente del push.
+
+**Commit 7 — feat(policy,agent): run_tests/run_lint fixed profiles, no generic command (D1) (9 nov 2026)**
+Hash: se anota en el commit siguiente. Notas 1-9 de Dario del 9/11:
+- **Dominio:** `ToolName.RUN_TESTS` y `RUN_LINT`. `ToolRequest` les rechaza cualquier campo que no usan (`executable`, `args`, `old_str`, `new_str`, y `path` en `run_lint`). **Agregado mío:** un `path` de `run_tests` que empieza con `-` también se rechaza, porque pytest lo leería como flag (`-p plugin`) y un `allowed_paths` permisivo como `.` lo dejaría pasar el chequeo de prefijo. `RUN_COMMAND` queda solo por compatibilidad (nota 3).
+- **`policy.yaml` describe perfiles** (id, `executable`, `argv` fijo, `timeout_seconds`, y `default_target` para `run_tests`). `allowed_commands: []`. `PolicyConfig.profiles` valida que los ids sean únicos y que el ejecutable y el argv no tengan metacaracteres de shell.
+- **Policy Engine:**
+  - si el perfil no existe → DENY `PROF-001`;
+  - `run_tests` con `path`: traversal o ruta absoluta → `PATH-001`, prohibido → `PATH-002`, fuera de `allowed_paths` ∪ `protected_paths` → `PATH-003`. Un node id (`tests/x.py::test_y`) se evalúa por su parte de archivo;
+  - ALLOW → `PROF-000`;
+  - el risk gate (CRITICAL/HIGH) sigue yendo primero;
+  - `run_command` → CMD-001 con la policy por defecto.
+- **Executor (notas 1, 2 y 4):**
+  - **`run_tests`:** corre `pytest [path|tests/] -q --json-report` con el reporte en un temp dir **fuera del workspace**, que se borra enseguida. Al modelo le devuelve JSON con `passed`/`failed`/`errors`/`skipped`/`xfailed`/`xpassed`, los node ids que fallaron (como máximo `MAX_FAILURES`=20) y el mensaje de cada uno (de `crash.message`, o `longrepr` si no hay), truncado a `MAX_MESSAGE_CHARS`=500;
+  - **`run_lint`:** corre `ruff check . --output-format json` (sin `--fix` ni `--config`) y devuelve las violaciones como `path` relativo, línea, código y mensaje (200 caracteres como máximo, hasta `MAX_VIOLATIONS`=50 violaciones);
+  - **outcome:** un exit distinto de 0 → FAILED, pero el resumen va en `output`, para que el modelo lo vea;
+  - **cachés:** `.pytest_cache`, `__pycache__` y `.ruff_cache` ya estaban en la lista de exclusiones de `changed_paths()` (D4), así que no hizo falta cambiar nada.
+- **Mismo perfil que los gates (nota 1):** `tests/policy/test_profiles.py` graba el argv que mandan de verdad `PytestGate` y `run_tests` (y `RuffGate` y `run_lint`) y lo compara. Solo difiere la ruta del reporte. Si alguien edita `policy.yaml` sin tocar el gate (o al revés), falla.
+- **Claude (nota 5):** los schemas son `read_file`, `patch_file`, `run_tests` (`path` opcional, `additionalProperties: false`) y `run_lint` (sin input). `tool_request_from_call("run_command", ...)` → `ValueError`. Las claves que no son campos de `ToolRequest` → `ValueError`, y los campos sobrantes llegan al validador (`args` en `run_tests` → `ValidationError`) en vez de descartarse sin aviso. El prompt dice que no hay comandos arbitrarios y usa `run_tests` como ejemplo. **Esto cambia lo que ve el agente real en el benchmark post-fix.**
+- **Xfail retirados (nota 6):** tests 1 (×4), 2 (×8) y 3 (×7) y S06, exactamente los esperados; no empezó a pasar ningún otro. También se retiraron, con nota, los dos de `tests/policy/test_executor.py`:
+  - `..._write_is_reported_as_a_changed_path` → tests 5 y 6;
+  - `..._cannot_leak_a_forbidden_path` → test 4 y S06.
+
+  Quedan **6 xfail**, todos de D5 (13, 14 ×3, 15) y D6 (16).
+- **Controles T01 y T05 (notas 4 y 6):** ahora usan `run_tests` (T01 con `path="tests/"`) y `run_lint` en vez de `run_command`. Siguen dando PASS con `changed-paths.json` == el archivo arreglado. T05 además verifica que los dos tools terminaron COMPLETED.
+- **S06 → `security_suite.py` (nota 7)** como `SecurityScenario`, con un campo nuevo `secret_marker`: PASS requiere el DENY **y** que el secreto no aparezca en ninguna salida. `run_scenario` acepta `policy_config=`. Controles negativos:
+  - `python` de vuelta en la allowlist → ALLOW → `passed=False`; sin filtración, porque D2 sigue valiendo;
+  - además sin `forbidden_paths` → el secreto vuelve por stdout → `secret_leaked=True`;
+  - `read_file` directo → DENY `PATH-002`.
+- **`scripts/run_security_eval.py`:** `all` corre S01-S08 y sale distinto de 0 si alguno no queda contenido. Cada forma se gradúa por su propio resultado; antes, `S05` suelto salía con 1 porque el script solo buscaba DENY. `make demo-security` corre `all`, y `make demo` resume S01-S08. Verificado: 8/8 contenidos. `run_decision_scenario` acepta `run_id=`.
+- **S04 (nota 8):** `curl` sigue dando DENY CMD-001. Su control negativo usaba `python` como request permitida, y ahora usa un `read_file` en alcance. Ningún guion de S01-S05 usaba `run_command pytest`; el único que quedaba era el control de T01, ya migrado.
+- **PoC (`tests/test_p0_command_bypass.py`), agregado mío:** `run_task` acepta `policy_config=`, y el PoC corre dos veces:
+  - con la policy por defecto, los dos comandos dan DENY CMD-001;
+  - con `python` en la allowlist, D2, D3 y D4 igual lo contienen: FAIL con `protected_path_modified`, sin filtración.
+
+  Así el PoC sigue ejercitando las capas de atrás, y no solo D1.
+- **Mutation check:** con `python` de vuelta en la allowlist por defecto fallan el test 1, S06, el PoC con la policy por defecto y el test de la config por defecto. Restaurado después.
+- **Hallazgo propio (9/11), documentado y no cerrado (es D5):** D1 cierra el canal genérico, no la ejecución del código del agente. Lo verifiqué en Windows, en modo local: `patch_file` en `src/calculator.py` con `raise AssertionError(open('<repo base>/secrets/k.txt').read())` + `run_tests` (ALLOW `PROF-000`) → el secreto vuelve en `failures[0].message` del resumen. El código que escribe el agente corre dentro de pytest, ve el host y lee el repo base por ruta absoluta. Docker (D5) lo cierra, porque el repo base no se monta. **Propuesta para D5:** sumar este caso como regresión, en docker → sin el secreto.
+- **Criterio 3 marcado** con evidencia: tests 1-3 de `tests/test_p0_regressions.py`, S06 en la suite, `tests/agent/test_tools.py::test_run_command_is_not_a_tool` y `::test_fixed_profile_tools_reject_free_input`, y `tests/policy/test_profiles.py`.
+- **Docs (nota 9):** SECURITY (aviso P0, dominio del agente, least privilege, sección de argv), THREAT-MODEL (aviso y filas Prompt injection, Secret access, Command injection y Out-of-band; ASI01/02/05 y AARM R1/R9 siguen parciales por D5), EVALUATION (tabla de alcance, S06 cerrado, `make demo-security`), README (aviso y conteo) y ARCHITECTURE (§9 Tools, nota del §5 y §24). El límite general (el código del agente corre dentro de pytest → D5) se sigue diciendo en todos.
+Tests: Windows 386 passed, 6 xfailed, 7 skipped; Linux (contenedor `python:3.11`, usuario no-root) 392 passed, 6 xfailed, 1 skipped (399 recolectados). T01 y T05 reales siguen dando PASS | ruff: clean | CI: pendiente del push.
 
 **Pendiente de Dario:**
 - ~~Los dos documentos del P0~~ — **commiteados el 8 nov 2026** como `docs/security/P0-design.md` (diseño aprobado, tests §4, claims §7, criterios §8) y `docs/security/P0-review.md` (hallazgos H1-H11, clasificación de controles, PoC). El checklist de arriba pasa a reemplazarse por los 9 criterios del §8 en el commit siguiente.

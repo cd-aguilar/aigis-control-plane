@@ -31,10 +31,17 @@ class RiskLevel(str, Enum):
 class ToolName(str, Enum):
     """The only capabilities the agent may request. Least privilege by
     construction: there is no ``run_any_command`` or ``write_file`` member.
+
+    ``RUN_TESTS``/``RUN_LINT`` (P0 D1) run a fixed profile from
+    ``policy.yaml`` -- no executable, no free arguments. ``RUN_COMMAND``
+    stays in the domain only for compatibility: no agent tool schema offers
+    it, and its generic allowlist is empty by default (DENY CMD-001).
     """
 
     READ_FILE = "read_file"
     PATCH_FILE = "patch_file"
+    RUN_TESTS = "run_tests"
+    RUN_LINT = "run_lint"
     RUN_COMMAND = "run_command"
 
 

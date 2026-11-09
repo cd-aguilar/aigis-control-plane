@@ -157,5 +157,72 @@ def test_low_risk_falls_through_to_normal_path_rules(engine: PolicyEngine) -> No
 
 
 def test_engine_loads_default_policy_config_when_none_given(contract: TaskContract) -> None:
+    """P0 D1: the bundled policy has no generic command allowlist, only the
+    fixed run_tests/run_lint profiles."""
     engine = PolicyEngine(contract)
-    assert "pytest" in engine.config.allowed_commands
+    assert engine.config.allowed_commands == []
+    assert {profile.id for profile in engine.config.profiles} == {"run_tests", "run_lint"}
+
+
+# --- fixed profiles (RUN_TESTS / RUN_LINT, P0 D1) -------------------------------
+
+
+@pytest.mark.parametrize(
+    "path", [None, "tests/", "tests/test_math.py::test_add", "src/", "src/aigis/test_x.py"]
+)
+def test_run_tests_in_allowed_or_protected_scope_is_allowed(
+    contract: TaskContract, path: str | None
+) -> None:
+    decision = PolicyEngine(contract).evaluate(ToolRequest(tool=ToolName.RUN_TESTS, path=path))
+    assert decision.decision == PolicyDecisionType.ALLOW
+    assert decision.policy_id == "PROF-000"
+
+
+@pytest.mark.parametrize(
+    ("path", "policy_id"),
+    [("../x", "PATH-001"), ("/etc", "PATH-001"), ("docs/", "PATH-003"), ("README.md", "PATH-003")],
+)
+def test_run_tests_outside_scope_is_denied(
+    contract: TaskContract, path: str, policy_id: str
+) -> None:
+    decision = PolicyEngine(contract).evaluate(ToolRequest(tool=ToolName.RUN_TESTS, path=path))
+    assert decision.decision == PolicyDecisionType.DENY
+    assert decision.policy_id == policy_id
+
+
+def test_run_tests_on_a_forbidden_node_id_is_denied() -> None:
+    contract = TaskContract(
+        task_id="T",
+        description="d",
+        allowed_paths=["src/"],
+        forbidden_paths=["src/secret_tests/"],
+        success_criteria=["ok"],
+        required_gates=["pytest"],
+        max_iterations=1,
+        max_runtime_seconds=1,
+        max_tool_calls=1,
+        max_files_changed=1,
+    )
+    decision = PolicyEngine(contract).evaluate(
+        ToolRequest(tool=ToolName.RUN_TESTS, path="src/secret_tests/test_a.py::test_x")
+    )
+    assert decision.policy_id == "PATH-002"
+
+
+def test_run_lint_is_allowed_by_its_profile(contract: TaskContract) -> None:
+    decision = PolicyEngine(contract).evaluate(ToolRequest(tool=ToolName.RUN_LINT))
+    assert decision.decision == PolicyDecisionType.ALLOW
+    assert decision.policy_id == "PROF-000"
+
+
+@pytest.mark.parametrize("tool", [ToolName.RUN_TESTS, ToolName.RUN_LINT])
+def test_missing_profile_is_denied(contract: TaskContract, tool: ToolName) -> None:
+    decision = PolicyEngine(contract, PolicyConfig()).evaluate(ToolRequest(tool=tool))
+    assert decision.decision == PolicyDecisionType.DENY
+    assert decision.policy_id == "PROF-001"
+
+
+def test_risk_gate_still_applies_to_profiles(contract: TaskContract) -> None:
+    critical = contract.model_copy(update={"risk_level": RiskLevel.CRITICAL})
+    decision = PolicyEngine(critical).evaluate(ToolRequest(tool=ToolName.RUN_TESTS))
+    assert decision.policy_id == "RISK-001"

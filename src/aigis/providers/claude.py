@@ -44,6 +44,11 @@ with a plain text message explaining what you did and why you believe the \
 task is complete, and do not call a tool in that same message. The system \
 will independently verify your work from the evidence you produced.
 
+There is no tool to run arbitrary commands. To check your work, call \
+run_tests (optionally with a path, e.g. {{"path": "tests/"}}, or a single \
+test file) and run_lint; both run a fixed profile and return structured \
+results.
+
 Task ID: {task_id}
 Description: {description}
 Allowed paths: {allowed_paths}
@@ -73,6 +78,12 @@ def _tool_input_for_attempt(attempt: Attempt) -> dict[str, Any]:
         return {"path": req.path}
     if req.tool is ToolName.PATCH_FILE:
         return {"path": req.path, "old_str": req.old_str, "new_str": req.new_str}
+    if req.tool is ToolName.RUN_TESTS:
+        return {"path": req.path} if req.path is not None else {}
+    if req.tool is ToolName.RUN_LINT:
+        return {}
+    # RUN_COMMAND: never offered to the model (P0 D1); only a scripted run
+    # can produce one. Replayed as-is so the history stays faithful.
     return {"executable": req.executable, "args": req.args}
 
 

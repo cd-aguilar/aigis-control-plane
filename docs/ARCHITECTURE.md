@@ -187,7 +187,7 @@ AIGIS se divide conceptualmente en dos planos.
                   └────────────────────────────────┘
 ```
 
-\* Solo en modo docker (`--sandbox docker`). El default actual es `LocalCowSandbox`, sin aislamiento de red ni de host (sección 11). Mientras el P0 siga abierto, el flujo de este diagrama tiene un desvío: la policy no evalúa qué hace un `run_command` permitido (D1). Desde D4, lo que ese comando cambia en el workspace sí lo ve la evaluación de scope, y desde D3 no llega a los insumos de los gates; lo que hace fuera del workspace en modo local no lo ve nadie (D5) — ver `docs/security/P0-review.md` y `STATUS.md`.
+\* Solo en modo docker (`--sandbox docker`). El default actual es `LocalCowSandbox`, sin aislamiento de red ni de host (sección 11). Mientras el P0 siga abierto, el flujo de este diagrama tiene un desvío: la policy no evalúa qué hace el código del agente que pytest importa (en `run_tests` o en el gate). Desde D4, lo que ese código cambia en el workspace sí lo ve la evaluación de scope, y desde D3 no llega a los insumos de los gates; lo que hace fuera del workspace en modo local no lo ve nadie (D5). Desde D1 no hay comando genérico — ver `docs/security/P0-review.md` y `STATUS.md`.
 
 ---
 
@@ -245,7 +245,7 @@ El agente no obtiene acceso directo al sistema — utiliza herramientas controla
 
 - **Lectura**: `read_file`
 - **Edición**: `patch_file` / `str_replace` (no se prioriza `write_file` arbitrario)
-- **Ejecución**: `run_command`, estructurado como `{"executable": "pytest", "args": ["tests/"]}` — nunca `{"command": "pytest tests/ && rm -rf ..."}`.
+- **Ejecución**: `run_tests` y `run_lint` (desde P0 D1, 9 nov 2026): perfiles fijos de `policy.yaml`, sin ejecutable ni argumentos del agente; `run_tests` solo acepta un `path` opcional. Todo comando corre como argv, nunca como `{"command": "pytest tests/ && rm -rf ..."}`. El diseño original tenía un `run_command` genérico (`{"executable": "pytest", "args": ["tests/"]}`); queda en el dominio por compatibilidad, sin schema para el agente y con la allowlist vacía.
 
 Esto elimina una clase importante de command injection por construcción, en lugar de intentar filtrar metacaracteres posteriormente.
 
@@ -423,7 +423,7 @@ No incorporar inicialmente: LangChain, LangGraph, Chroma, Redis, Postgres, Kafka
 
 **MVP (Fases 0-6) completo desde el 2026-08-29.** 223 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio. Conteo al 7 sep 2026 (tras Dev Container + Makefile de demo): 234 recolectados — 233 verdes, 1 skip.
 
-**P0 de seguridad abierto (desde el 22 sep 2026):** bypass de scope vía `run_command` que termina en `PASS` — ver `docs/security/P0-review.md` (hallazgos), `docs/security/P0-design.md` (fix D1-D6 y criterios de cierre) y `STATUS.md` (avance commit por commit). Bloquea todo lo demás. Hechos D4 (cambios observados, `d9933bc`), D2 (prohibidos fuera del workspace, `1ac97c0`) y D3 (insumos de los gates protegidos, `9279473`, endurecido en el 6c: sin PASS silencioso por skip/xfail o `noqa`); el PoC original ya da FAIL. Faltan D1, D5, D6 y re-correr el benchmark. Conteo actual (9 nov 2026): **362 tests recolectados** — Linux 333 passed / 28 xfailed (regresiones del P0 que quedan, `xfail(strict=True)`) / 1 skipped. CI mínima (pytest + ruff) en `.github/workflows/ci.yml` desde el 8/11.
+**P0 de seguridad abierto (desde el 22 sep 2026):** bypass de scope vía `run_command` que termina en `PASS` — ver `docs/security/P0-review.md` (hallazgos), `docs/security/P0-design.md` (fix D1-D6 y criterios de cierre) y `STATUS.md` (avance commit por commit). Bloquea todo lo demás. Hechos D4 (cambios observados, `d9933bc`), D2 (prohibidos fuera del workspace, `1ac97c0`), D3 (insumos de los gates protegidos, `9279473`, endurecido en el 6c: sin PASS silencioso por skip/xfail o `noqa`) y D1 (`run_tests`/`run_lint` con perfiles fijos, sin comando genérico); el PoC original ya da FAIL. Faltan D5, D6 y re-correr el benchmark. Conteo actual (9 nov 2026): **399 tests recolectados** — Linux 392 passed / 6 xfailed (regresiones del P0 que quedan, `xfail(strict=True)`) / 1 skipped. CI mínima (pytest + ruff) en `.github/workflows/ci.yml` desde el 8/11.
 
 **Completado:**
 - Arquitectura conceptual y tesis del proyecto consolidadas (este documento).
