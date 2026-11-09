@@ -100,7 +100,7 @@ def main(argv: list[str] | None = None) -> None:
                 task_id: {**asdict(agg), "per_run": [asdict(r) for r in agg.per_run]}
                 for task_id, agg in aggregate_by_task(runs).items()
             }
-            print(json.dumps(payload, indent=2))
+            print(json.dumps(payload, indent=2, default=str))
         else:
             _print_per_task(runs)
         return
@@ -110,7 +110,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.json:
         payload = asdict(metrics)
         payload["per_run"] = [asdict(r) for r in metrics.per_run]
-        print(json.dumps(payload, indent=2))
+        print(json.dumps(payload, indent=2, default=str))
         return
 
     print(f"runs: {metrics.run_count}")
