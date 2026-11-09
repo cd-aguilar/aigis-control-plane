@@ -16,6 +16,10 @@ from aigis.domain.enums import RiskLevel
 
 _ANY_DEPTH = "**/"
 
+# 2.0 (P0 D3, 2026-11-09): protected_paths, and allowed_paths may no longer
+# overlap them. Breaking: a 1.0 contract that allowed tests/ is rejected.
+CONTRACT_VERSION = "2.0"
+
 # P0 D3: the inputs a Quality Gate grades with. The agent can read them but
 # never change what the gates see: the evaluation workspace always takes
 # them from the base repo. Two kinds of entry:
@@ -107,7 +111,7 @@ class TaskContract(BaseModel):
     max_files_changed: int = Field(gt=0)
 
     risk_level: RiskLevel = RiskLevel.LOW
-    contract_version: str = "1.0"
+    contract_version: str = CONTRACT_VERSION
 
     @field_validator("allowed_paths", "forbidden_paths", "protected_paths")
     @classmethod
@@ -148,7 +152,11 @@ class TaskContract(BaseModel):
         )
         if conflicts:
             raise ValueError(
-                f"allowed_paths and protected_paths must not overlap: {conflicts}"
+                f"allowed_paths and protected_paths must not overlap: {conflicts}. "
+                f"Since contract_version {CONTRACT_VERSION} (P0 D3), tests, pytest/ruff "
+                "config and conftest.py are protected (read-only for the agent) by "
+                "default; a 1.0 contract that allowed tests/ must allow only the code "
+                "to change (e.g. 'src/')"
             )
         return self
 

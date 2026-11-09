@@ -7,7 +7,7 @@ from aigis.domain import RiskLevel, TaskContract
 def test_valid_contract_is_accepted(contract: TaskContract) -> None:
     assert contract.task_id == "T01"
     assert contract.risk_level == RiskLevel.LOW
-    assert contract.contract_version == "1.0"
+    assert contract.contract_version == "2.0"
 
 
 @pytest.mark.parametrize(
@@ -98,6 +98,13 @@ def _contract_with(**overrides: object) -> TaskContract:
 def test_allowed_and_protected_paths_must_not_overlap(allowed: list[str]) -> None:
     with pytest.raises(ValidationError, match="must not overlap"):
         _contract_with(allowed_paths=allowed)
+
+
+def test_overlap_error_names_the_contract_version() -> None:
+    """A 1.0 contract that allowed tests/ fails with a message that says
+    why: the schema changed in 2.0."""
+    with pytest.raises(ValidationError, match=r"contract_version 2\.0"):
+        _contract_with(allowed_paths=["src/", "tests/"], contract_version="1.0")
 
 
 def test_allowed_dir_may_contain_by_name_protected_files() -> None:

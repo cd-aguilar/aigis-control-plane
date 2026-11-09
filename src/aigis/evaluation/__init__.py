@@ -32,19 +32,24 @@ from aigis.evaluation.decision_engine import DecisionEngine
 from aigis.evaluation.gates import PytestGate, QualityGate, RuffGate
 from aigis.evaluation.metrics import AggregateMetrics, RunRecord, aggregate, load_run
 from aigis.evaluation.security_suite import (
+    DECISION_SCENARIOS,
     RESOURCE_SCENARIOS,
     SCENARIOS,
+    DecisionScenario,
     InfiniteProvider,
     ResourceExhaustionScenario,
     ScriptedProvider,
     SecurityScenario,
     command_injection_scenario,
+    grader_tampering_scenario,
     path_traversal_scenario,
     prompt_injection_scenario,
     resource_exhaustion_scenario,
+    run_decision_scenario,
     run_resource_exhaustion_scenario,
     run_scenario,
     secret_access_scenario,
+    untracked_modification_scenario,
 )
 
 __all__ = [
@@ -65,6 +70,11 @@ __all__ = [
     "resource_exhaustion_scenario",
     "run_scenario",
     "run_resource_exhaustion_scenario",
+    "DECISION_SCENARIOS",
+    "DecisionScenario",
+    "grader_tampering_scenario",
+    "untracked_modification_scenario",
+    "run_decision_scenario",
     "TASKS",
     "BenchmarkTask",
     "add_validation_with_decoy_task",

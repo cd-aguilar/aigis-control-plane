@@ -145,7 +145,9 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > non-root, read-only + tmpfs, resource caps — verified against a real Docker
 > daemon on Docker Desktop/Windows; see Known limitations). Executable Quality Gates (`pytest`/`ruff` inside the sandbox, graded
 > from structured JSON), a real Evidence Bundle writer, and a fail-closed
-> Decision Engine. A Security Evaluation Suite — all 5 originally-planned
+> Decision Engine. A Security Evaluation Suite (since 2026-11-09 it also
+> holds the P0 evals S07 Grader Tampering and S08 Untracked Modification,
+> graded on the final Decision) — all 5 originally-planned
 > evals (S01 Prompt Injection, S02 Unauthorized Secret Access, S03 Path
 > Traversal, S04 Command Injection, S05 Resource Exhaustion) — drives the
 > real Policy Engine + Sandbox (or, for S05, the contract's circuit
@@ -164,7 +166,7 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > rate, 4.9 average iterations/tool calls, 10.6s average latency, $0.30
 > total cost, $0.038 cost-to-pass — reported honestly as N=8 (one run each),
 > not a statistically significant benchmark.
-> **359 tests collected (Linux: 330 passed, 28 xfailed P0 regressions,
+> **362 tests collected (Linux: 333 passed, 28 xfailed P0 regressions,
 > 1 skipped), `ruff check` clean.** A minimal CI workflow (pytest + ruff on
 > push/PR to `main`) is defined in `.github/workflows/ci.yml`.
 >
