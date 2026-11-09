@@ -1,15 +1,38 @@
 # Demo: 8/8 real runs against Claude
 
 **Reproducir: `make demo`** — runs T01 against the real Claude API (needs
-`ANTHROPIC_API_KEY`) followed by the S01 prompt-injection security eval, and
-prints a summary. See the root `README.md` Quickstart section for setup.
+`ANTHROPIC_API_KEY` and the sandbox image, `make sandbox-image`) followed by
+the Security Evaluation Suite (S01-S08), and prints a summary. See the root `README.md` Quickstart section for setup.
 
 Real terminal output, unedited, from `aigis run` against the actual Claude
 API (`claude-sonnet-5`) — not a scripted or simulated transcript. See
 `examples/tasks/README.md` to reproduce this yourself with your own
 `ANTHROPIC_API_KEY`.
 
-## Transcript (2026-08-29)
+## Post-fix benchmark (2026-11-09): 24/24 PASS in docker
+
+After the P0 fix, the same 8 tasks were run **3 times each** against `claude-sonnet-5` on AIGIS commit `8aad58d`, all in the
+default docker sandbox (image `sha256:82889fc1…`, clean checkout). `python scripts/aggregate_metrics.py --all --aigis-commit
+8aad58d`:
+
+| Metric | Pre-fix (2026-08-29, local, N=1/task) | Post-fix (2026-11-09, docker, N=3/task) |
+|---|---|---|
+| Runs | 8 | 24 |
+| Success rate | 8/8 = 100% | 24/24 = 100% |
+| Avg iterations / tool calls | 4.9 | 4.9 |
+| Avg latency | 10.6 s | 9.7 s |
+| Total cost | $0.3044 | $0.9707 |
+| Cost-to-pass | $0.0381 | $0.0404 (+6%) |
+| Policy DENY / REQUIRE_HUMAN | 0 / 0 | 0 / 0 |
+
+What changed in between: docker instead of a local copy, `run_tests`/`run_lint` instead of a generic `run_command`, tests
+read-only for the agent (`protected_paths`), and a new prompt. The agent behaved the same; each PASS costs 6% more (more input
+tokens, fewer output tokens). **No run had a single DENY: this shows the agent behaved, not that the controls were tested.** The
+controls are tested by the Security Suite (S01-S08) and the P0 regressions. T06 remains the most expensive task in all three runs,
+so it is a property of the task, not noise. The first post-fix pass (on `7e697b1`) found a harness bug: T07 failed 3/3 because the
+sandbox image had no PyYAML. It was fixed in `8aad58d` and rerun. Full tables and caveats: `docs/EVALUATION.md`.
+
+## Transcript (2026-08-29) — pre-fix baseline
 
 ```text
 PS C:\Users\dario\Proyectos\06-Consultora-Aigis\aigis-control-plane> aigis run examples/tasks/T01/contract.json examples/tasks/T01/repo
