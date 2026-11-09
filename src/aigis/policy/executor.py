@@ -39,7 +39,7 @@ from aigis.domain import (
 )
 from aigis.policy.config import CommandProfile
 from aigis.policy.engine import PolicyEngine
-from aigis.sandbox.base import CommandResult, Sandbox
+from aigis.sandbox.base import REPORT_DIR_TOKEN, CommandResult, Sandbox
 
 # Fixed truncation limits for what goes back to the model.
 MAX_FAILURES = 20
@@ -138,9 +138,10 @@ class SandboxedToolExecutor:
                 [
                     *([target] if target else []),
                     *profile.argv,
-                    f"--json-report-file={report_file}",
+                    f"--json-report-file={REPORT_DIR_TOKEN}/{_REPORT_FILE}",
                 ],
                 timeout_seconds=profile.timeout_seconds,
+                report_dir=report_dir,
             )
             report = _load_json_object(report_file)
         finally:

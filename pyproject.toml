@@ -13,10 +13,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Exact pins (P0 D5): the same versions the sandbox image grades with
+# (sandbox/Dockerfile; tests/sandbox/test_sandbox_image.py keeps them equal).
 dev = [
-    "pytest>=8",
-    "pytest-json-report>=1.5",
-    "ruff>=0.6",
+    "pytest==9.1.1",
+    "pytest-json-report==1.5.0",
+    "ruff==0.16.4",
 ]
 
 [project.scripts]

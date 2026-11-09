@@ -11,8 +11,9 @@
 #   executable, argv and timeout. The agent supplies nothing but, for
 #   run_tests, an optional path inside allowed_paths or protected_paths.
 #   run_tests is the same invocation PytestGate grades with, and run_lint
-#   the same as RuffGate's normal check (tests/policy/test_config.py keeps
-#   them in sync). The executor appends what is per-run, not policy: the
+#   the same as RuffGate's normal check (tests/policy/test_profiles.py
+#   keeps them in sync). No caches (-p no:cacheprovider, --no-cache): in
+#   docker the workspace is mounted read-only (P0 D5). The executor appends what is per-run, not policy: the
 #   test target and the report file, which lives outside the workspace.
 #
 # - `allowed_commands` is the generic RUN_COMMAND allowlist, kept only for
@@ -25,10 +26,10 @@ allowed_commands: []
 profiles:
   - id: run_tests
     executable: pytest
-    argv: ["-q", "--json-report"]
+    argv: ["-q", "-p", "no:cacheprovider", "--json-report"]
     default_target: tests/
     timeout_seconds: 120
   - id: run_lint
     executable: ruff
-    argv: ["check", ".", "--output-format", "json"]
+    argv: ["check", ".", "--no-cache", "--output-format", "json"]
     timeout_seconds: 60

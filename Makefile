@@ -1,10 +1,21 @@
-.PHONY: setup test lint check demo-task demo-security demo clean-evidence
+.PHONY: setup sandbox-image test lint check demo-task demo-security demo clean-evidence
 
 PYTHON ?= python
+SANDBOX_IMAGE ?= aigis-sandbox:local
 
 setup:
 	pip install -e ".[dev]"
-	docker pull python:3.11-slim
+	$(MAKE) --no-print-directory sandbox-image
+
+# P0 D5: builds the sandbox image (sandbox/Dockerfile: base pinned by
+# digest, grading tools pinned to the dev extra, non-root) and records its
+# image ID in sandbox/.image-id. A local build is not reproducible byte for
+# byte, so that ID -- not a registry digest -- is what DockerSandbox checks
+# before running anything, and what it runs.
+sandbox-image:
+	docker build -t $(SANDBOX_IMAGE) sandbox/
+	docker image inspect --format '{{.Id}}' $(SANDBOX_IMAGE) > sandbox/.image-id
+	@echo "sandbox image ID recorded in sandbox/.image-id"
 
 test:
 	pytest -q

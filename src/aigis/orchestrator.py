@@ -23,13 +23,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from aigis.agent.runtime import AgentRuntime
-from aigis.domain import Decision, EnvironmentMetadata, Evidence, TaskContract, TaskState
+from aigis.domain import (
+    Decision,
+    EnvironmentMetadata,
+    Evidence,
+    GateResult,
+    TaskContract,
+    TaskState,
+)
+from aigis.domain.enums import GateType
 from aigis.evaluation.decision_engine import DecisionEngine
 from aigis.evaluation.gates import GateContext, PytestGate, QualityGate, RuffGate
 from aigis.evidence.bundle import EvidenceBundleWriter
 from aigis.policy.config import PolicyConfig
 from aigis.policy.engine import PolicyEngine
 from aigis.policy.executor import SandboxedToolExecutor
+from aigis.sandbox.docker_sandbox import SandboxImageError
 from aigis.sandbox.local_cow import LocalCowSandbox
 
 if TYPE_CHECKING:
@@ -66,6 +75,19 @@ def run_task(
     run_id = run_id or f"run-{uuid.uuid4().hex[:12]}"
     selected = [gate for gate in gates if gate.gate_name in contract.required_gates]
 
+    sandbox: Sandbox = sandbox_factory(base_repo)
+    # P0 D5: a sandbox that pins an image (DockerSandbox) must find exactly
+    # that image before anything runs. Otherwise no agent turn, no gate:
+    # NEEDS_HUMAN, with the reason in the bundle.
+    verify_image = getattr(sandbox, "verify_image", None)
+    if verify_image is not None:
+        try:
+            verify_image()
+        except SandboxImageError as exc:
+            return _sandbox_unavailable(
+                contract, selected, run_id, evidence_base_dir, model_provider, model, str(exc)
+            )
+
     # D3 hardening: gates that compare against the base (PytestGate's
     # skip/xfail/xpass rule) take their baseline now, in a separate clean
     # copy of the base, before the agent exists. Neither the agent nor its
@@ -83,7 +105,6 @@ def run_task(
         finally:
             baseline_sandbox.destroy()
 
-    sandbox: Sandbox = sandbox_factory(base_repo)
     # P0 D2: forbidden paths are not copied into the workspace at all.
     sandbox.create(exclude=contract.forbidden_paths)
     excluded_paths = list(getattr(sandbox, "excluded_paths", []))
@@ -165,6 +186,57 @@ def run_task(
     )
     writer.write_decision(run_id, decision)
 
+    return state, decision, evidence
+
+
+def _sandbox_unavailable(
+    contract: TaskContract,
+    selected: list[QualityGate],
+    run_id: str,
+    evidence_base_dir: str | Path,
+    model_provider: str,
+    model: str,
+    reason: str,
+) -> tuple[TaskState, Decision, Evidence]:
+    """The sandbox cannot be trusted to run anything (P0 D5: image missing
+    or not the recorded one). Every required gate gets an
+    infrastructure_error, so the Decision Engine's own fail-closed rule
+    yields NEEDS_HUMAN -- the same path as a gate that could not run."""
+    gate_types = {gate.gate_name: gate.gate_type for gate in selected}
+    gate_results = [
+        GateResult(
+            gate_name=name,
+            gate_type=gate_types.get(name, GateType.TEST),
+            passed=False,
+            infrastructure_error=f"sandbox_unavailable: {reason}",
+        )
+        for name in contract.required_gates
+    ]
+    state = TaskState(run_id=run_id, task_id=contract.task_id)
+    writer = EvidenceBundleWriter(base_dir=evidence_base_dir)
+    environment = EnvironmentMetadata(
+        run_id=run_id,
+        model_provider=model_provider,
+        model=model,
+        task_contract_version=contract.contract_version,
+    )
+    evidence = writer.write(
+        run_id=run_id,
+        contract=contract,
+        state=state,
+        gate_results=gate_results,
+        environment=environment,
+        diff="",
+        observed_changes=[],
+    )
+    decision = DecisionEngine().decide(
+        run_id=run_id,
+        contract=contract,
+        state=state,
+        gate_results=gate_results,
+        observed_changes=[],
+    )
+    writer.write_decision(run_id, decision)
     return state, decision, evidence
 
 

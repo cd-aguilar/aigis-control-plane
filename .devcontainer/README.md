@@ -12,7 +12,8 @@ without touching the host's Docker Desktop.
 2. Open this repo in VS Code, then **Reopen in Container** (Command Palette →
    "Dev Containers: Reopen in Container").
 3. First build installs the base image, the `docker-in-docker` feature, and
-   runs `pip install -e ".[dev]"` + `docker pull python:3.11-slim` — a few
+   runs `pip install -e ".[dev]"` + `make sandbox-image` (builds the AIGIS
+   sandbox image and records its ID in `sandbox/.image-id`) — a few
    minutes on the first run, seconds after that.
 
 ## Pass the API key

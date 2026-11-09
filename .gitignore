@@ -17,3 +17,6 @@ htmlcov/
 
 # graphify knowledge graph output (regenerable)
 graphify-out/
+
+# Built sandbox image ID for this machine (make sandbox-image, P0 D5)
+/sandbox/.image-id

@@ -107,10 +107,14 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
   copy-on-write sandbox unless you pass `--sandbox docker`; in local mode,
   executed code sees the host filesystem and has network access. "No
   network" holds in docker mode only.
-- **Docker mode is verified on Docker Desktop (Windows) only.** It lacks
-  `--cap-drop ALL`/`no-new-privileges`, the image is not pinned by digest and
-  has no `pytest`/`ruff`, and Linux-native file permissions were never
-  tested (known UID issue).
+- **Docker mode needs the AIGIS sandbox image** (`make sandbox-image`).
+  Since D5 it runs that image by its verified image ID (base pinned by
+  digest, pytest/ruff pinned), with `--cap-drop ALL`, `no-new-privileges`,
+  no network, a read-only root and a **read-only workspace mount**; reports
+  go to a separate mount. A missing or different image means no run at all
+  (`NEEDS_HUMAN`). Verified on Docker Desktop (Windows); CI runs the same
+  container tests on a native Linux runner (uid 1001) and fails if Docker
+  is missing (`AIGIS_REQUIRE_DOCKER=1`).
 - **The graded code still runs inside the gate.** Since D3, tests,
   pytest/ruff config and any `conftest.py` are protected (read-only for
   the agent, always taken from the base repo when the gates run) and the
@@ -169,8 +173,8 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > rate, 4.9 average iterations/tool calls, 10.6s average latency, $0.30
 > total cost, $0.038 cost-to-pass — reported honestly as N=8 (one run each),
 > not a statistically significant benchmark.
-> **399 tests collected (Linux: 392 passed, 6 xfailed P0 regressions,
-> 1 skipped), `ruff check` clean.** A minimal CI workflow (pytest + ruff on
+> **422 tests collected (Windows with Docker Desktop: 409 passed, 5 xfailed
+> P0 regressions, 8 platform skips), `ruff check` clean.** A minimal CI workflow (pytest + ruff on
 > push/PR to `main`) is defined in `.github/workflows/ci.yml`.
 >
 > The initial MVP scope (ARCHITECTURE.md section 21) was completed on

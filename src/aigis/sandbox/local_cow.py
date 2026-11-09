@@ -31,7 +31,7 @@ from pathlib import Path, PureWindowsPath
 
 from aigis.domain.task_contract import path_matches_protected
 from aigis.policy.engine import path_matches_prefix
-from aigis.sandbox.base import CommandResult
+from aigis.sandbox.base import CommandResult, expand_report_dir
 
 # Environment variables let through to the sandboxed subprocess. Anything
 # not listed here -- API keys, credentials, unrelated host state -- is
@@ -162,12 +162,18 @@ class LocalCowSandbox:
         target.write_text(content, encoding="utf-8")
 
     def run_command(
-        self, executable: str, args: list[str], *, timeout_seconds: int
+        self,
+        executable: str,
+        args: list[str],
+        *,
+        timeout_seconds: int,
+        report_dir: Path | None = None,
     ) -> CommandResult:
         env = {name: os.environ[name] for name in _ALLOWED_ENV_VARS if name in os.environ}
+        argv = expand_report_dir(args, str(report_dir) if report_dir is not None else None)
         try:
             completed = subprocess.run(  # noqa: S603 -- argv list, never shell=True
-                [executable, *args],
+                [executable, *argv],
                 cwd=self.workdir,
                 env=env,
                 capture_output=True,

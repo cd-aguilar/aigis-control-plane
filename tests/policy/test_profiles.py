@@ -26,7 +26,7 @@ from aigis.policy.executor import (
     SandboxedToolExecutor,
     summarize_pytest_report,
 )
-from aigis.sandbox.base import CommandResult
+from aigis.sandbox.base import REPORT_DIR_TOKEN, CommandResult
 from aigis.sandbox.local_cow import LocalCowSandbox
 
 
@@ -51,11 +51,14 @@ class _Recorder:
     def __init__(self) -> None:
         self.calls: list[tuple[str, list[str]]] = []
 
-    def run_command(self, executable: str, args: list[str], *, timeout_seconds: int):
+    def run_command(
+        self, executable: str, args: list[str], *, timeout_seconds: int, report_dir=None
+    ):
         self.calls.append((executable, list(args)))
         for arg in args:
             if arg.startswith("--json-report-file="):
-                Path(arg.split("=", 1)[1]).write_text(
+                target = arg.split("=", 1)[1].replace(REPORT_DIR_TOKEN, str(report_dir))
+                Path(target).write_text(
                     json.dumps({"exitcode": 0, "summary": {"passed": 1}}), encoding="utf-8"
                 )
         return CommandResult(exit_code=0, stdout="[]", stderr="")

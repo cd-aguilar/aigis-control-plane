@@ -21,9 +21,29 @@ anything upstream of it -- same dependency-inversion shape as
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Protocol
 
 from pydantic import BaseModel
+
+# Placeholder a caller puts in ``run_command`` args where a report file
+# should go (e.g. ``--json-report-file={aigis_report_dir}/r.json``). Each
+# sandbox replaces it with the report directory *as the command sees it*:
+# the host path for LocalCowSandbox, ``/aigis-report`` (a separate rw
+# mount) for DockerSandbox, whose workspace is mounted read-only (P0 D5).
+REPORT_DIR_TOKEN = "{aigis_report_dir}"
+
+
+def expand_report_dir(args: Sequence[str], seen_as: str | None) -> list[str]:
+    """Replaces ``REPORT_DIR_TOKEN`` in ``args``. A token with no report
+    directory is a caller bug: fail loudly instead of running pytest with a
+    literal ``{aigis_report_dir}`` path inside the workspace.
+    """
+    if seen_as is None:
+        if any(REPORT_DIR_TOKEN in arg for arg in args):
+            raise ValueError(f"{REPORT_DIR_TOKEN} in args but no report_dir given")
+        return list(args)
+    return [arg.replace(REPORT_DIR_TOKEN, seen_as) for arg in args]
 
 
 class CommandResult(BaseModel):
@@ -61,8 +81,19 @@ class Sandbox(Protocol):
     def write_file(self, path: str, content: str) -> None: ...
 
     def run_command(
-        self, executable: str, args: list[str], *, timeout_seconds: int
-    ) -> CommandResult: ...
+        self,
+        executable: str,
+        args: list[str],
+        *,
+        timeout_seconds: int,
+        report_dir: Path | None = None,
+    ) -> CommandResult:
+        """``report_dir``: a host directory OUTSIDE the workspace, created by
+        the caller, where the command may write its report. Referenced in
+        ``args`` through ``REPORT_DIR_TOKEN``; the only place a command can
+        write besides /tmp in docker mode.
+        """
+        ...
 
     def collect_diff(self) -> str: ...
 

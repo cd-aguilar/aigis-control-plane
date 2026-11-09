@@ -9,7 +9,7 @@ import pytest
 from aigis.domain.enums import GateType
 from aigis.domain.quality_gate import GateResult
 from aigis.evaluation.gates import _PYTEST_REPORT_FILE, GateContext, PytestGate, RuffGate
-from aigis.sandbox.base import CommandResult
+from aigis.sandbox.base import REPORT_DIR_TOKEN, CommandResult
 from aigis.sandbox.local_cow import LocalCowSandbox
 
 
@@ -37,14 +37,15 @@ class FakeSandbox:
         self.files[path] = content
 
     def run_command(
-        self, executable: str, args: list[str], *, timeout_seconds: int
+        self, executable: str, args: list[str], *, timeout_seconds: int, report_dir=None
     ) -> CommandResult:
         # Plays pytest-json-report: since P0 D3 the gate reads its report
         # from the --json-report-file path (outside the workspace), never
         # through read_file -- so the fake writes it there, as pytest would.
         for arg in args:
             if arg.startswith("--json-report-file=") and _PYTEST_REPORT_FILE in self.files:
-                Path(arg.split("=", 1)[1]).write_text(
+                target = arg.split("=", 1)[1].replace(REPORT_DIR_TOKEN, str(report_dir))
+                Path(target).write_text(
                     self.files[_PYTEST_REPORT_FILE], encoding="utf-8"
                 )
         return self.command_result

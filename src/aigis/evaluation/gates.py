@@ -31,7 +31,7 @@ from typing import Any, Protocol
 
 from aigis.domain.enums import GateType
 from aigis.domain.quality_gate import GateResult
-from aigis.sandbox.base import CommandResult, Sandbox
+from aigis.sandbox.base import REPORT_DIR_TOKEN, CommandResult, Sandbox
 
 _PYTEST_REPORT_FILE = "pytest-report.json"
 
@@ -182,15 +182,22 @@ class PytestGate:
 
     def _invoke(self, sandbox: Sandbox, report_file: Path) -> CommandResult:
         report_file.unlink(missing_ok=True)
+        # The report path goes through REPORT_DIR_TOKEN: each sandbox maps
+        # it to the directory as the command sees it (a separate rw mount
+        # in docker, whose workspace is read-only, P0 D5). No cache and no
+        # bytecode: nothing is written into the workspace.
         return sandbox.run_command(
             "pytest",
             [
                 *self.args,
                 "-q",
+                "-p",
+                "no:cacheprovider",
                 "--json-report",
-                f"--json-report-file={report_file}",
+                f"--json-report-file={REPORT_DIR_TOKEN}/{report_file.name}",
             ],
             timeout_seconds=self.timeout_seconds,
+            report_dir=report_file.parent,
         )
 
     def _run(
@@ -350,7 +357,9 @@ class RuffGate:
         # report_dir is unused: ruff's report is its stdout, and ruff never
         # executes the code it lints. Accepted for the QualityGate protocol.
         changed = _lintable_present(sandbox, context.agent_changed_files if context else ())
-        normal = self._check(sandbox, ["check", *self.args, "--output-format", "json"])
+        normal = self._check(
+            sandbox, ["check", *self.args, "--no-cache", "--output-format", "json"]
+        )
         if not isinstance(normal, list):
             return normal
         if not changed:
@@ -361,6 +370,7 @@ class RuffGate:
                 "check",
                 "--ignore-noqa",
                 "--force-exclude",
+                "--no-cache",
                 "--output-format",
                 "json",
                 # "./" so that no path can be read as an option.

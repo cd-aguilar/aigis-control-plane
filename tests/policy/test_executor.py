@@ -38,7 +38,7 @@ class FakeSandbox:
         self.files[path] = content
 
     def run_command(
-        self, executable: str, args: list[str], *, timeout_seconds: int
+        self, executable: str, args: list[str], *, timeout_seconds: int, report_dir=None
     ) -> CommandResult:
         self.calls.append(("run_command", executable, *args))
         return self.command_result

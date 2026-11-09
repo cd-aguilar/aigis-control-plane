@@ -36,10 +36,16 @@ jobs:
       - name: Lint
         run: ruff check .
 
-      # Pre-pull the DockerSandbox base image so the first container test does
-      # not spend its own 30 s timeout downloading it.
-      - name: Pull sandbox image
-        run: docker pull python:3.11-slim
+      # P0 D5: build the sandbox image (base pinned by digest) and record its
+      # image ID in sandbox/.image-id, which DockerSandbox verifies before
+      # every run.
+      - name: Build sandbox image
+        run: make sandbox-image
 
+      # AIGIS_REQUIRE_DOCKER=1: the docker tests that skip locally without a
+      # daemon or image FAIL here instead. Closing criterion 1 needs them to
+      # run for real (local and docker).
       - name: Test
-        run: pytest -q
+        env:
+          AIGIS_REQUIRE_DOCKER: "1"
+        run: pytest -q -rs
