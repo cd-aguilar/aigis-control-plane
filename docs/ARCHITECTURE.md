@@ -187,7 +187,7 @@ AIGIS se divide conceptualmente en dos planos.
                   └────────────────────────────────┘
 ```
 
-\* Solo en modo docker (`--sandbox docker`). El default actual es `LocalCowSandbox`, sin aislamiento de red ni de host (sección 11). Mientras el P0 siga abierto, el flujo de este diagrama tiene un desvío: lo que hace un `run_command` permitido no lo ven ni la policy ni la evaluación de scope/tests — ver `docs/security/P0-review.md`.
+\* Solo en modo docker (`--sandbox docker`). El default actual es `LocalCowSandbox`, sin aislamiento de red ni de host (sección 11). Mientras el P0 siga abierto, el flujo de este diagrama tiene un desvío: la policy no evalúa qué hace un `run_command` permitido (D1). Desde D4, lo que ese comando cambia en el workspace sí lo ve la evaluación de scope, y desde D3 no llega a los insumos de los gates; lo que hace fuera del workspace en modo local no lo ve nadie (D5) — ver `docs/security/P0-review.md` y `STATUS.md`.
 
 ---
 
@@ -296,9 +296,12 @@ Deterministas. Inicialmente: `pytest`, `ruff`. Resultados estructurados (ej. `py
 ```text
 evidence/<run-id>/
     manifest.json  task.json  trace.jsonl  state.json  events.jsonl
-    diff.patch  test-report.json  lint-report.json  security-report.json
+    diff.patch  changed-paths.json  excluded-paths.json
+    test-report.json  lint-report.json  security-report.json
     environment.json  hashes.json  decision.json
 ```
+
+`changed-paths.json` (desde D4) es la lista de cambios observados en el workspace de la que el Decision Engine calcula `scope_ok`; `excluded-paths.json` (desde D2) registra qué no se copió de la base y por qué.
 
 `manifest.json` y `hashes.json` permiten detectar corrupción accidental de los artefactos. **No son tamper-evidence:** son checksums sin clave ni firma, guardados junto a los artefactos y sin cubrir `decision.json`, así que quien pueda modificar el bundle puede recalcularlos. Para tamper-evidence hace falta firmar (receipts firmados, planeado como P3); una cadena de hashes sola tampoco alcanza.
 
@@ -420,7 +423,7 @@ No incorporar inicialmente: LangChain, LangGraph, Chroma, Redis, Postgres, Kafka
 
 **MVP (Fases 0-6) completo desde el 2026-08-29.** 223 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio. Conteo al 7 sep 2026 (tras Dev Container + Makefile de demo): 234 recolectados — 233 verdes, 1 skip.
 
-**P0 de seguridad abierto (desde el 22 sep 2026):** bypass de scope vía `run_command` que termina en `PASS` — ver `docs/security/P0-review.md` (hallazgos), `docs/security/P0-design.md` (fix D1-D6 y criterios de cierre) y `STATUS.md` (avance commit por commit). Bloquea todo lo demás. Conteo actual (8 nov 2026): **290 tests recolectados** — Linux 242 passed / 47 xfailed (regresiones del P0, `xfail(strict=True)`) / 1 skipped. CI mínima (pytest + ruff) en `.github/workflows/ci.yml` desde el 8/11.
+**P0 de seguridad abierto (desde el 22 sep 2026):** bypass de scope vía `run_command` que termina en `PASS` — ver `docs/security/P0-review.md` (hallazgos), `docs/security/P0-design.md` (fix D1-D6 y criterios de cierre) y `STATUS.md` (avance commit por commit). Bloquea todo lo demás. Hechos D4 (cambios observados, `d9933bc`), D2 (prohibidos fuera del workspace, `1ac97c0`) y D3 (insumos de los gates protegidos, `9279473`); el PoC original ya da FAIL. Faltan D1, D5, D6 y re-correr el benchmark. Conteo actual (9 nov 2026): **340 tests recolectados** — Linux 311 passed / 28 xfailed (regresiones del P0 que quedan, `xfail(strict=True)`) / 1 skipped. CI mínima (pytest + ruff) en `.github/workflows/ci.yml` desde el 8/11.
 
 **Completado:**
 - Arquitectura conceptual y tesis del proyecto consolidadas (este documento).

@@ -1,12 +1,13 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 9 nov 2026 — P0 de seguridad sigue abierto (bypass de scope vía `run_command`, ver sección dedicada), **5 de 9 criterios de cierre cumplidos** (2, 4, 5, 7, 9). Hechos: D4 (`d9933bc`), D2 (`1ac97c0`) y D3 (commit 6, pendiente de push). Siguiente: D1 (commit 7). CI #3 verde sobre `e894f38`. Tests en Windows: 305 passed, 28 xfailed, 7 skipped; Linux (contenedor): 311 passed, 28 xfailed, 1 skipped; ruff limpio. Anterior: 9 nov 2026, antes de D3._
+_Última actualización: 9 nov 2026 — P0 de seguridad sigue abierto (bypass de scope vía `run_command`, ver sección dedicada), **5 de 9 criterios de cierre cumplidos** (2, 4, 5, 7, 9). Hechos: D4 (`d9933bc`), D2 (`1ac97c0`) y D3 (`9279473`), más el commit 6b de docs. Siguiente: D1 (commit 7). CI #4 verde sobre `9279473`. Tests en Windows: 305 passed, 28 xfailed, 7 skipped; Linux (contenedor): 311 passed, 28 xfailed, 1 skipped; ruff limpio. Anterior: 9 nov 2026, antes del 6b._
 
 ### Qué sigue (orden del plan, numeración de `next-tasks`)
 
 1. ~~Push de `cc74e83` + `1ac97c0`~~ — hecho, CI #3 verde sobre `e894f38` (27 s).
 2. ~~Decisión de Dario antes de D3~~ — **resuelta el 9/11: opción (b)**. `test_run_command_cannot_leak_a_forbidden_path` se retira en D1 (ver "Pendiente de Dario").
-3. ~~Commit 6 — D3~~ — hecho (ver la entrada "Commit 6" más abajo). Pendiente: push y CI #4 (lo hace Dario).
+3. ~~Commit 6 — D3~~ — hecho, CI #4 verde sobre `9279473` (34 s).
+   ~~Commit 6b — docs~~ — hecho (docs desactualizados desde D4/D2/D3). Pendiente: push y CI (lo hace Dario).
 4. **Commit 7 — D1:** `run_tests`/`run_lint` en lugar de `run_command`, con la allowlist genérica vacía. Saca de xfail los tests 1-3 y S06, y también los 2 xfail que quedan en `test_executor.py`. Cubre el criterio 3.
 5. **Commit 8 — D5:** imagen propia por digest, docker por defecto, `--unsafe-local`, y resolver el bug Docker/UID. Saca de xfail los tests 13-15. Cubre los criterios 1 y 6.
 6. **Commit 9 — D6** (P1, test 16). **Commit 10:** re-correr el benchmark después del fix (lo corre Dario con su key). Cubre el criterio 8.
@@ -229,7 +230,7 @@ Hash: `1ac97c0`.
 Tests: Windows 257 passed, 36 xfailed, 6 skipped (los casos de symlink se saltean en Windows; re-verificado el 9/11); Linux (contenedor) 262 passed, 36 xfailed, 1 skipped | ruff: clean | CI: #3 verde sobre `e894f38` (incluye `cc74e83` y este commit).
 
 **Commit 6 — feat(gates): protected gate inputs + evaluation workspace (D3) (9 nov 2026)**
-Hash: se anota en el commit siguiente.
+Hash: `9279473`. **CI #4 verde** sobre `9279473` (34 s).
 - `TaskContract.protected_paths` con default `tests/`, `pytest.ini`, `.pytest.ini`, `setup.cfg` y `tox.ini` en la raíz, más `**/conftest.py`, `**/pyproject.toml`, `**/ruff.toml` y `**/.ruff.toml`. `**/<nombre>` es un nombre de archivo en cualquier nivel, raíz incluida; el resto sigue la regla de prefijos de siempre. Validador nuevo: `allowed_paths` ∩ `protected_paths` = ∅ en las dos direcciones (un allowed dentro de un protegido, o un protegido dentro de un allowed, como `.`). Un `**/` solo choca con un allowed que nombre ese archivo, así que `src/` puede contener un `conftest.py`, que sigue protegido.
 - **Desvío de la nota 2, a revisar:** los configs de ruff y `pyproject.toml` se protegen **por nombre en cualquier nivel**, no solo en la raíz. Verificado con ruff 0.16 (9/11): un `src/ruff.toml` o un `src/pyproject.toml` con `[tool.ruff]` apaga el lint de `src/` (exit 0 sobre un F401 real) aunque el de la raíz esté intacto, porque ruff usa el config más cercano a cada archivo. `pytest.ini`/`setup.cfg`/`tox.ini` quedan solo en la raíz, porque pytest los busca en el rootdir y `pytest tests/` lo fija. También se agregó `.pytest.ini`. Mutation check: con `ruff.toml` solo en la raíz, `test_d3_nested_ruff_config_is_protected_and_ignored_by_the_gate` falla.
 - **Benchmark (nota 4):** las 8 tareas tenían `tests/` en `allowed_paths`. Se corrigió el contrato, no el validador: `["src/"]` en todas, y T07 queda en `["config/"]` solo. `examples/tasks/*/contract.json` regenerados. Con el mismo criterio se corrigieron 3 contratos de tests (`tests/conftest.py`, `tests/domain/conftest.py` y el del PoC en `tests/test_p0_command_bypass.py`). El PoC sigue dando FAIL.
@@ -256,11 +257,24 @@ Hash: se anota en el commit siguiente.
   - controles de la nota 5: tests que fallan de verdad → FAIL sin `infrastructure_error`, ruff ausente → NEEDS_HUMAN, y reporte y exit code del proceso en desacuerdo → FAIL.
 
   Controles de la nota 6: **T01 real** (`test_09_control_benchmark_t01_...`) y **T05 real** (`test_04_control_benchmark_t05_...`) siguen dando PASS con el workspace de evaluación y los gates pytest y ruff reales.
-Tests: Windows 305 passed, 28 xfailed, 7 skipped (el caso nuevo de symlink se saltea en Windows); Linux (contenedor `python:3.11`, usuario no-root) 311 passed, 28 xfailed, 1 skipped | ruff: clean | CI: pendiente del push.
+Tests: Windows 305 passed, 28 xfailed, 7 skipped (el caso nuevo de symlink se saltea en Windows); Linux (contenedor `python:3.11`, usuario no-root) 311 passed, 28 xfailed, 1 skipped | ruff: clean | CI: #4 verde.
 Pendiente, fuera de D3 (para decidir con Dario):
-- **Docs desactualizados desde D4/D2:** `README.md` (Known limitations: "Scope is computed from the agent's tool log"), `docs/THREAT-MODEL.md` (filas Secret access / Unauthorized file modification / Out-of-band, que todavía dicen D2/D4 abiertos), `docs/SECURITY.md` ("Copia el repo entero, `forbidden_paths` incluidos"; "Hoy el Decision Engine no usa `diff.patch`") y `docs/ARCHITECTURE.md` §24 (conteo del 8/11). Todos afirman *menos* de lo que hace el código, así que no rompen el criterio 7, pero están desactualizados. Candidato a un commit `docs` propio.
+- ~~**Docs desactualizados desde D4/D2:**~~ — resuelto en el commit 6b (abajo). `README.md` (Known limitations: "Scope is computed from the agent's tool log"), `docs/THREAT-MODEL.md` (filas Secret access / Unauthorized file modification / Out-of-band, que todavía dicen D2/D4 abiertos), `docs/SECURITY.md` ("Copia el repo entero, `forbidden_paths` incluidos"; "Hoy el Decision Engine no usa `diff.patch`") y `docs/ARCHITECTURE.md` §24 (conteo del 8/11). Todos afirman *menos* de lo que hace el código, así que no rompen el criterio 7, pero están desactualizados. Candidato a un commit `docs` propio.
 - El docstring de `tests/test_p0_regressions.py` dice que S06/S07/S08 pasan a `security_suite.py` cuando su fix agrega el motivo de decisión. S08 (D4) no se movió y S07 tampoco. ¿Se mueven juntos, o se ajusta el docstring?
 - `TaskContract.contract_version` sigue en `"1.0"` aunque el esquema sumó `protected_paths`. Los contratos viejos con `tests/` en `allowed_paths` ahora fallan la validación con un mensaje claro.
+
+**Commit 6b — docs: bring README/SECURITY/THREAT-MODEL/EVALUATION/ARCHITECTURE up to D4/D2/D3 (9 nov 2026)**
+Hash: se anota en el commit siguiente. Solo docs, sin cambios de código. Lo que seguía describiendo como abierto algo que D4, D2 o D3 ya cerraron:
+- **Avisos del P0** (`README.md`, `docs/SECURITY.md`, `docs/THREAT-MODEL.md`, nota del diagrama en `ARCHITECTURE.md` §5): pasan de "lee prohibidos, escribe sin quedar registrado, reescribe los tests y da PASS" a lo que ya está cerrado (D2, D4, D3; el PoC da FAIL) y lo que sigue abierto (código arbitrario por `run_command`, D1; host y red visibles en modo local, D5).
+- `README.md`: "Scope is computed from the agent's tool log" → scope observado en el workspace, con el límite de las escrituras fuera del workspace. Conteo: 340 recolectados (Linux 311 / 28 xfailed / 1 skipped).
+- `docs/SECURITY.md`: `LocalCowSandbox` ya no copia los prohibidos (D2, con los symlinks excluidos y `excluded-paths.json`); `diff.patch` y `changed-paths.json` salen de la misma comparación y el Decision Engine usa la lista observada (D4); los protegidos en el orden de reglas del Policy Engine; `changed-paths.json`/`excluded-paths.json` en la lista del Evidence Bundle.
+- `docs/THREAT-MODEL.md`: filas Prompt injection, Secret access (→ parcial), Unauthorized file modification (→ cubierto dentro del workspace, S08) y Out-of-band (→ parcial, S06 xfail hasta D1). El resumen OWASP y AARM no cambia: ASI01/02/05 y R1/R9 siguen parciales por D1/D5.
+- `docs/EVALUATION.md`: S02 (qué no prueba), S06 (sin fuga desde D2, sigue xfail por el ALLOW), S08 cerrado con D4. Se mantiene la frase de que S06-S08 pasan a `security_suite.py`, con la nota de que S07/S08 siguen en el test pendiente de decisión.
+- `docs/ARCHITECTURE.md`: §13 con los dos artefactos nuevos; §24 con D4/D2/D3 hechos y el conteo del 9/11.
+- `CLAUDE.md`: próximos pasos del P0 (D3 hecho, 5/9).
+- **Verificación nueva (9/11, Windows), base del texto sobre secretos:** con `create(exclude=["secrets/"])`, `run_command python -c "open('<repo base>/secrets/k.txt')"` devuelve el secreto. D2 saca los prohibidos del workspace, no del host; en modo local, el código ejecutado los sigue leyendo desde el repo base por su ruta absoluta. No es un hallazgo nuevo (es el "ve el filesystem del host" del P0, que cierra D5), pero ningún doc lo decía así. No se agregó test: lo cubre D5 (tests 13-15).
+- Criterio 7: el grep ampliado da las mismas coincidencias calificadas.
+Tests: sin cambios de código | ruff: clean | CI: pendiente del push.
 
 **Pendiente de Dario:**
 - ~~Los dos documentos del P0~~ — **commiteados el 8 nov 2026** como `docs/security/P0-design.md` (diseño aprobado, tests §4, claims §7, criterios §8) y `docs/security/P0-review.md` (hallazgos H1-H11, clasificación de controles, PoC). El checklist de arriba pasa a reemplazarse por los 9 criterios del §8 en el commit siguiente.

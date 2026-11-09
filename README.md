@@ -85,15 +85,21 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 
 ## Known limitations
 
-> **Open P0 security finding (since 2026-09-22).** With the default policy, a
-> `run_command` using an allowlisted executable (`python`) can read
-> `forbidden_paths`, write outside `allowed_paths` without it being recorded,
-> and rewrite the tests the gate later grades — and the run still ends in
-> `PASS`. Until the fix lands, AIGIS **cannot claim** to prevent secret
-> access, to restrict the scope of changes, or to verify a task independently
-> of the agent. Findings: [`docs/security/P0-review.md`](docs/security/P0-review.md).
+> **Open P0 security finding (since 2026-09-22), partly fixed.** With the
+> default policy, `run_command` still accepts an allowlisted interpreter
+> (`python`) that runs arbitrary code. What the fix has closed so far:
+> forbidden paths are no longer copied into the sandbox (D2), a write that
+> bypasses `patch_file` is observed on the filesystem and fails the run
+> (D4), and tests, test/lint config and the pytest report are protected
+> and taken from the base repo when the gates run (D3). The original
+> proof of concept now ends in `FAIL`, not `PASS`. Still open: arbitrary
+> commands (D1), and the default local sandbox, where executed code sees
+> the host filesystem (base repo included) and the network (D5). Until the
+> fix is complete, AIGIS **cannot claim** to prevent secret access or to
+> verify a task independently of the agent.
+> Findings: [`docs/security/P0-review.md`](docs/security/P0-review.md).
 > Fix design and closing criteria: [`docs/security/P0-design.md`](docs/security/P0-design.md).
-> Failing regressions (xfail strict): `tests/test_p0_regressions.py`.
+> Remaining failing regressions (xfail strict): `tests/test_p0_regressions.py`.
 
 - **The default sandbox is not isolated.** `aigis run` uses the local
   copy-on-write sandbox unless you pass `--sandbox docker`; in local mode,
@@ -111,8 +117,12 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
   tamper with the run from the inside. Closing that needs process isolation
   between grader and graded code; it is a documented limit, not a guarantee
   ([`docs/SECURITY.md`](docs/SECURITY.md)).
-- **Scope is computed from the agent's tool log**, not from the filesystem:
-  `scope_ok` and `max_files_changed` only see `patch_file` edits.
+- **Scope is observed only inside the workspace.** Since D4, `scope_ok`
+  and `max_files_changed` come from comparing the workspace against the
+  base repo, not from the agent's tool log, so a change that bypasses
+  `patch_file` fails the run (`untracked_modification`). A local-mode
+  command that writes *outside* the workspace, on the host, is not
+  observed.
 - **Evidence checksums are not tamper-evidence.** `hashes.json` is unsigned;
   signed receipts are planned, not built.
 - **The 8/8 benchmark is a pre-fix baseline** (local sandbox, N=1-3 per
@@ -152,7 +162,7 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > rate, 4.9 average iterations/tool calls, 10.6s average latency, $0.30
 > total cost, $0.038 cost-to-pass — reported honestly as N=8 (one run each),
 > not a statistically significant benchmark.
-> **290 tests collected (Linux: 242 passed, 47 xfailed P0 regressions,
+> **340 tests collected (Linux: 311 passed, 28 xfailed P0 regressions,
 > 1 skipped), `ruff check` clean.** A minimal CI workflow (pytest + ruff on
 > push/PR to `main`) is defined in `.github/workflows/ci.yml`.
 >
