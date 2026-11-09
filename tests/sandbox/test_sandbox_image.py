@@ -5,7 +5,9 @@ agree, and the base image must be pinned by digest.
 
 from __future__ import annotations
 
+import ast
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -49,3 +51,57 @@ def test_dockerfile_base_is_pinned_by_digest_and_runs_non_root() -> None:
     assert re.search(r"@sha256:[0-9a-f]{64}$", base), base
     user = [line for line in lines if line.startswith("USER ")]
     assert user and not user[-1].split()[1].startswith(("0", "root"))
+
+
+# --- benchmark task dependencies (9b) -----------------------------------------
+
+# import name -> pip distribution, for every non-stdlib, non-local module a
+# benchmark task repo imports. Adding a task with a new dependency means
+# adding it here AND pinning it in sandbox/Dockerfile.
+_TASK_IMPORTS_TO_DIST = {"pytest": "pytest", "yaml": "pyyaml"}
+
+
+def _local_modules(repo: Path) -> set[str]:
+    names = set()
+    for path in repo.rglob("*"):
+        if path.suffix == ".py":
+            names.add(path.stem)
+        elif path.is_dir():
+            names.add(path.name)
+    return names
+
+
+def _third_party_imports(repo: Path) -> set[str]:
+    found = set()
+    local = _local_modules(repo)
+    for path in repo.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                roots = [alias.name.split(".")[0] for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                roots = [node.module.split(".")[0]]
+            else:
+                continue
+            found.update(r for r in roots if r not in sys.stdlib_module_names and r not in local)
+    return found
+
+
+def test_every_benchmark_task_import_is_installed_in_the_image() -> None:
+    """T07 (`import yaml`) failed collection in docker in the post-fix
+    benchmark: the image had no PyYAML. Every third-party import of every
+    examples/tasks repo must map to a pinned package in the Dockerfile."""
+    pins = _pins(_dockerfile().splitlines())
+    repos = sorted((ROOT / "examples" / "tasks").glob("*/repo"))
+    assert len(repos) == 8
+    for repo in repos:
+        for module in sorted(_third_party_imports(repo)):
+            assert module in _TASK_IMPORTS_TO_DIST, (
+                f"{repo.parent.name} imports {module!r}: map it in _TASK_IMPORTS_TO_DIST "
+                "and pin its package in sandbox/Dockerfile"
+            )
+            assert _TASK_IMPORTS_TO_DIST[module] in pins, (repo.parent.name, module)
+
+
+def test_the_t07_dependency_is_in_the_image() -> None:
+    assert _pins(_dockerfile().splitlines()).get("pyyaml") == "6.0.2"

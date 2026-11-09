@@ -180,7 +180,7 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > rate, 4.9 average iterations/tool calls, 10.6s average latency, $0.30
 > total cost, $0.038 cost-to-pass — reported honestly as N=8 (one run each),
 > not a statistically significant benchmark.
-> **437 tests collected (Windows with Docker Desktop: 429 passed, 8 platform
+> **447 tests collected (Windows with Docker Desktop: 439 passed, 8 platform
 > skips, no P0 regression left in xfail), `ruff check` clean.** A minimal CI workflow (pytest + ruff on
 > push/PR to `main`) is defined in `.github/workflows/ci.yml`.
 >

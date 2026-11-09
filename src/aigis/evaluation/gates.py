@@ -144,8 +144,8 @@ class PytestGate:
             # agent's code produced: no verdict (NEEDS_HUMAN downstream).
             return self._result(
                 False,
-                {"error": "pytest baseline unavailable"},
-                infrastructure_error=f"pytest baseline unavailable: {context.baseline_error}",
+                {"error": "pytest baseline unavailable or unusable"},
+                infrastructure_error=context.baseline_error,
             )
         baseline = context.baseline if context is not None else None
         own_dir = report_dir is None
@@ -162,20 +162,36 @@ class PytestGate:
         """Runs the same tests in ``sandbox`` -- a clean copy of the base
         repo that the agent never touches -- and returns their outcomes as
         a :class:`GateContext`. The report goes to a temp dir outside the
-        sandbox, removed right after. Never raises: a run that leaves no
-        usable report becomes ``baseline_error``.
+        sandbox, removed right after. Never raises.
+
+        A baseline the gate cannot compare against becomes ``baseline_error``
+        (-> ``infrastructure_error`` -> NEEDS_HUMAN, never FAIL):
+        - ``baseline_unavailable``: timeout, or no readable report;
+        - ``baseline_unusable`` (9b): the base itself does not collect --
+          a collection error, an exit code other than 0/1, or 0 tests
+          collected. Found by the post-fix benchmark (T07: ``import yaml``
+          with no PyYAML in the sandbox image): grading the agent against
+          a base that cannot run blames the agent for the environment. An
+          agent that *breaks* collection still FAILs: that shows up
+          against a healthy baseline.
         """
         directory = Path(tempfile.mkdtemp(prefix="aigis-pytest-baseline-"))
         report_file = directory / _PYTEST_REPORT_FILE
         try:
             result = self._invoke(sandbox, report_file)
             if result.timed_out:
-                return GateContext(baseline_error="baseline run timed out")
+                return GateContext(baseline_error="baseline_unavailable: baseline run timed out")
             report = _load_report(report_file)
             if report is None:
                 return GateContext(
-                    baseline_error=f"pytest exited {result.exit_code} without a usable report"
+                    baseline_error=(
+                        f"baseline_unavailable: pytest exited {result.exit_code} "
+                        "without a usable report"
+                    )
                 )
+            unusable = _baseline_unusable(report, result.exit_code)
+            if unusable is not None:
+                return GateContext(baseline_error=f"baseline_unusable: {unusable}")
             return GateContext(baseline=_outcomes(report))
         finally:
             shutil.rmtree(directory, ignore_errors=True)
@@ -279,6 +295,34 @@ def _load_report(report_file: Path) -> dict[str, Any] | None:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
     return report if isinstance(report, dict) else None
+
+
+def collection_errors(report: Mapping[str, Any]) -> list[dict[str, str]]:
+    """Collectors pytest could not import/collect (``nodeid`` + message)."""
+    collectors = report.get("collectors")
+    if not isinstance(collectors, list):
+        return []
+    return [
+        {"nodeid": str(c.get("nodeid")), "message": str(c.get("longrepr", ""))}
+        for c in collectors
+        if isinstance(c, dict) and c.get("outcome") == "failed"
+    ]
+
+
+def _baseline_unusable(report: Mapping[str, Any], exit_code: int) -> str | None:
+    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+    collected = summary.get("collected")
+    if not isinstance(collected, int):
+        tests = report.get("tests")
+        collected = len(tests) if isinstance(tests, list) else 0
+    errors = [c["nodeid"] for c in collection_errors(report)]
+    report_exit = report.get("exitcode")
+    if errors or collected == 0 or report_exit not in (0, 1) or exit_code not in (0, 1):
+        return (
+            f"base repo does not collect: exit {report_exit} (process {exit_code}), "
+            f"{collected} test(s) collected, collection errors: {errors}"
+        )
+    return None
 
 
 def _outcomes(report: Mapping[str, Any]) -> dict[str, str]:

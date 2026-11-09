@@ -132,16 +132,26 @@ class _AlwaysPassGate:
 
 
 def _mutating_sandbox(mutation: Callable[[Path], None]) -> Callable[[Path], LocalCowSandbox]:
-    """A real LocalCowSandbox that changes its own workspace right after
-    create(), outside any tool call -- the "Sandbox fake que escribe en el
-    workspace" of P0 section 4 test 5. It stands for any untracked channel
+    """A real LocalCowSandbox whose workspace changes at the end of the
+    agent's turn, outside any tool call -- the "Sandbox fake que escribe en
+    el workspace" of P0 section 4 test 5. It stands for any untracked channel
     (a command, a test, a hook) without needing a bypass payload.
+
+    The change lands in changed_paths(), which only the agent's sandbox
+    ever gets: the clean baseline sandbox run_task builds for PytestGate
+    never sees it, as in production. (Until 9b it landed in create(), which
+    also tampered the baseline -- harmless while a broken baseline was only
+    compared against, wrong once an unusable baseline is NEEDS_HUMAN.)
     """
 
     class _Mutating(LocalCowSandbox):
-        def create(self, *, exclude=()) -> None:
-            super().create(exclude=exclude)
-            mutation(self.workdir)
+        _pending = True
+
+        def changed_paths(self) -> list[str]:
+            if self._pending:
+                self._pending = False
+                mutation(self.workdir)
+            return super().changed_paths()
 
     return lambda base_repo: _Mutating(base_repo)
 
@@ -1131,6 +1141,117 @@ def test_d3h_discarded_changes_reach_the_evidence_bundle(tmp_path: Path) -> None
     assert "discarded-changes.json" in manifest["files"]
     assert "discarded-changes.json" in hashes
     assert decision.final == FinalDecision.FAIL
+
+
+# --- Unusable baseline (9b: found by the post-fix benchmark, T07) -------------------
+#
+# T07 imports yaml; the sandbox image had no PyYAML, so the BASE could not
+# even be collected and every run was graded FAIL no_test_passed -- the
+# agent blamed for the environment. A base that does not collect is now
+# NEEDS_HUMAN baseline_unusable; an agent that breaks collection still FAILs.
+
+_TEST_WITH_DEP = (
+    "import extradep\nfrom calculator import subtract\n\n\n"
+    "def test_subtract():\n    assert extradep.READY\n    assert subtract(5, 3) == 2\n"
+)
+
+
+def _repo_with_dependency(root: Path, *, dependency_available: bool) -> Path:
+    repo = _write_repo(root)
+    (repo / "tests" / "test_calculator.py").write_text(_TEST_WITH_DEP, encoding="utf-8")
+    if dependency_available:
+        (repo / "src" / "extradep.py").write_text("READY = True\n", encoding="utf-8")
+    return repo
+
+
+def _run_on_repo(repo: Path, tmp_path: Path, actions: list):
+    return run_task(
+        _contract(),
+        repo,
+        ScriptedProvider([*actions, ClaimDone(message="done")]),
+        gates=(PytestGate(),),
+        evidence_base_dir=tmp_path / "evidence",
+        model_provider="test",
+        model="scripted",
+    )
+
+
+def test_9b_base_that_does_not_collect_is_needs_human_baseline_unusable(tmp_path: Path) -> None:
+    repo = _repo_with_dependency(tmp_path / "repo", dependency_available=False)
+    _, decision, _ = _run_on_repo(repo, tmp_path, [_fix_subtract()])
+    assert decision.final == FinalDecision.NEEDS_HUMAN
+    assert "baseline_unusable" in decision.reason
+    assert "tests/test_calculator.py" in decision.reason  # the detail
+
+
+def test_9b_control_same_repo_with_the_dependency_passes(tmp_path: Path) -> None:
+    repo = _repo_with_dependency(tmp_path / "repo", dependency_available=True)
+    _, decision, _ = _run_on_repo(repo, tmp_path, [_fix_subtract()])
+    assert decision.final == FinalDecision.PASS, decision.reason
+
+
+def test_9b_agent_breaking_collection_still_fails(tmp_path: Path) -> None:
+    """Against a healthy baseline, a collection error the agent introduced
+    is the agent's: FAIL, not NEEDS_HUMAN."""
+    repo = _repo_with_dependency(tmp_path / "repo", dependency_available=True)
+    breaks = ProposeToolRequest(
+        tool_request=ToolRequest(
+            tool=ToolName.PATCH_FILE,
+            path="src/extradep.py",
+            old_str="READY = True\n",
+            new_str="import not_a_real_module_anywhere\n\nREADY = True\n",
+        )
+    )
+    _, decision, _ = _run_on_repo(repo, tmp_path, [_fix_subtract(), breaks])
+    assert decision.final == FinalDecision.FAIL
+    assert "baseline_unusable" not in decision.reason
+
+
+def test_9b_run_tests_summary_shows_collection_errors(tmp_path: Path) -> None:
+    """The agent in T07 saw 0 passed / 0 failed / 0 errors and retried 8
+    times blind: a module pytest cannot import is now in the summary."""
+    repo = _repo_with_dependency(tmp_path / "repo", dependency_available=False)
+    state, _, _ = _run_on_repo(
+        repo, tmp_path, [ProposeToolRequest(tool_request=ToolRequest(tool=ToolName.RUN_TESTS))]
+    )
+    summary = json.loads(state.attempts[0].output)
+    assert summary["collection_errors"][0]["nodeid"] == "tests/test_calculator.py"
+    assert "extradep" in summary["collection_errors"][0]["message"]
+
+
+def test_9b_benchmark_t07_legit_fix_passes_in_docker(docker_ready: None, tmp_path: Path) -> None:
+    """The real T07 in the real sandbox image: with PyYAML in the image the
+    baseline collects, and a scripted correct fix (config only) PASSes."""
+    from aigis.evaluation.benchmark_tasks import configuration_change_task, materialize
+    from aigis.evaluation.gates import RuffGate
+
+    task = configuration_change_task()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    materialize(task, repo)
+    fix = ProposeToolRequest(
+        tool_request=ToolRequest(
+            tool=ToolName.PATCH_FILE,
+            path="config/settings.yaml",
+            old_str="max_retries: 1",
+            new_str="max_retries: 3",
+        )
+    )
+    state, decision, _ = run_task(
+        task.contract,
+        repo,
+        ScriptedProvider(
+            [fix, ProposeToolRequest(tool_request=ToolRequest(tool=ToolName.RUN_TESTS))]
+            + [ClaimDone(message="done")]
+        ),
+        gates=(PytestGate(), RuffGate()),
+        sandbox_factory=DockerSandbox,
+        evidence_base_dir=tmp_path / "evidence",
+        model_provider="test",
+        model="scripted",
+    )
+    assert json.loads(state.attempts[1].output)["passed"] == 1
+    assert decision.final == FinalDecision.PASS, decision.reason
 
 
 # --- Isolation (D5) -------------------------------------------------------------

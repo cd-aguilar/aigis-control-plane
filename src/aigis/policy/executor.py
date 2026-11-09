@@ -256,6 +256,8 @@ def summarize_pytest_report(
 
     tests = report.get("tests") if isinstance(report.get("tests"), list) else []
     failing = [t for t in tests if isinstance(t, dict) and t.get("outcome") in ("failed", "error")]
+    raw_collectors = report.get("collectors") if isinstance(report.get("collectors"), list) else []
+    collectors = [c for c in raw_collectors if isinstance(c, dict) and c.get("outcome") == "failed"]
     return {
         "target": target,
         "exit_code": exit_code,
@@ -270,6 +272,13 @@ def summarize_pytest_report(
             for t in failing[:MAX_FAILURES]
         ],
         "failures_omitted": max(0, len(failing) - MAX_FAILURES),
+        # 9b: a module pytest could not even import never shows up as a
+        # failed test -- without this the agent saw "0 passed, 0 failed"
+        # and retried blind (T07 in the post-fix benchmark).
+        "collection_errors": [
+            {"nodeid": str(c.get("nodeid")), "message": _truncate(str(c.get("longrepr", "")))}
+            for c in collectors[:MAX_FAILURES]
+        ],
     }
 
 

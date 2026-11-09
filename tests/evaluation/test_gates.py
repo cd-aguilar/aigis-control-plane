@@ -190,15 +190,42 @@ def test_pytest_gate_baseline_error_is_infrastructure_error() -> None:
         _report_sandbox(_skip_report()), context=GateContext(baseline_error="pytest exited 127")
     )
     assert result.passed is False
-    assert result.infrastructure_error is not None
-    assert "baseline unavailable" in result.infrastructure_error
+    # the baseline's own diagnosis is passed through verbatim
+    assert result.infrastructure_error == "pytest exited 127"
 
 
 def test_pytest_gate_collect_baseline_without_report_is_an_error() -> None:
     sandbox = FakeSandbox(command_result=CommandResult(exit_code=127, stdout="", stderr=""))
     context = PytestGate().collect_baseline(sandbox)
     assert context.baseline is None
-    assert context.baseline_error == "pytest exited 127 without a usable report"
+    assert context.baseline_error == (
+        "baseline_unavailable: pytest exited 127 without a usable report"
+    )
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        {"exitcode": 2, "summary": {"collected": 0, "total": 0}},  # T07: import error
+        {"exitcode": 5, "summary": {"collected": 0, "total": 0}},  # no tests collected
+        {
+            "exitcode": 1,
+            "summary": {"collected": 1, "failed": 1},
+            "collectors": [{"nodeid": "tests/test_b.py", "outcome": "failed", "longrepr": "E"}],
+            "tests": [{"nodeid": "tests/test_a.py::test_x", "outcome": "failed"}],
+        },
+    ],
+)
+def test_pytest_gate_baseline_that_does_not_collect_is_unusable(report: dict) -> None:
+    """9b: a base that cannot be collected is not a baseline -- the gate
+    has no verdict (NEEDS_HUMAN downstream), never a FAIL for the agent."""
+    sandbox = _report_sandbox(report, exit_code=report["exitcode"])
+    context = PytestGate().collect_baseline(sandbox)
+    assert context.baseline is None
+    assert context.baseline_error.startswith("baseline_unusable:")
+    result = PytestGate().run(_report_sandbox(_skip_report()), context=context)
+    assert result.infrastructure_error == context.baseline_error
+    assert result.passed is False
 
 
 def test_gate_result_rule_violations_never_pass() -> None:

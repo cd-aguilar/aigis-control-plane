@@ -68,6 +68,8 @@ PASS en `NEEDS_HUMAN` `security_deny_escalated` (default del contrato, `deny_esc
 un `NEEDS_HUMAN` de este tipo cuenta como *no PASS* en el success rate, y es información sobre el agente (intentó algo sensible),
 no un fallo del sistema. T05, que tiene un decoy de secretos fuera de alcance, es la tarea donde más puede aparecer.
 
+**Primera pasada post-fix (9 nov 2026, sobre `7e697b1`): descartada por un bug del harness.** T07 dio FAIL en las 3 corridas porque la imagen del sandbox no traía PyYAML y el repo base ni siquiera colectaba (`evidence/run-c40681a54de1`). Lo corrige el commit 9b: PyYAML en la imagen, línea base que no colecta → `NEEDS_HUMAN baseline_unusable` y errores de colección en el resumen de `run_tests`. El benchmark se re-corre completo (8×3) sobre ese commit y esa imagen; las corridas de `7e697b1` no se mezclan con esas (`--aigis-commit`).
+
 **Atar las métricas a un código exacto (desde P0 D6).** `environment.json` registra `aigis_commit` y `aigis_dirty` (cambios sin
 commitear en el checkout de AIGIS). Las corridas pre-fix y post-fix conviven en `evidence/`: nunca se agregan juntas.
 

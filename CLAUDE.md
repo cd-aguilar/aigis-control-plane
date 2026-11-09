@@ -243,8 +243,10 @@ diferidos y rechazados, discutidos con Dario en sesión de Cowork:
       Hechos: tests de regresión (xfail strict), recorte de claims, CI
       mínima, D4 (`d9933bc`), D2 (`1ac97c0`), D3 (`9279473`, endurecido
       en `6059126`), D1 (`bdb743c`), D5 (`d1412fa` + `2a23b11`: docker
-      por defecto) y D6 (commit 9). Falta re-correr el benchmark (en
-      docker, filtrado por `--aigis-commit`). Van 8/9 criterios de cierre
+      por defecto), D6 (`7e697b1`) y 9b (fix del harness que encontró
+      la primera pasada del benchmark: T07 sin PyYAML en la imagen). Falta
+      re-correr el benchmark completo sobre el commit del 9b (en docker,
+      filtrado por `--aigis-commit`). Van 8/9 criterios de cierre
       (falta el 8). Ya no queda ningún xfail del P0.
 - [ ] Fase 7 (Production Hardening) — explícitamente fuera del alcance
       inicial, no empezar sin decisión explícita

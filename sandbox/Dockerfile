@@ -19,10 +19,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# Grading tools (same versions as the dev extra), then the dependencias de
+# las tareas del benchmark: the tasks' code runs in this image with no
+# network, so every non-stdlib module a task repo imports must be installed
+# here (tests/sandbox/test_sandbox_image.py checks every examples/tasks
+# import against this list).
 RUN pip install \
         pytest==9.1.1 \
         pytest-json-report==1.5.0 \
         ruff==0.16.4 \
+        pyyaml==6.0.2 \
     && useradd --uid 1000 --create-home --shell /usr/sbin/nologin aigis
 
 USER 1000:1000
