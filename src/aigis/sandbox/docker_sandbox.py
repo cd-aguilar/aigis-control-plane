@@ -133,6 +133,8 @@ def _docker(args: list[str], *, timeout: int = 30) -> subprocess.CompletedProces
 
 
 class DockerSandbox(LocalCowSandbox):
+    isolation = "docker"
+
     def __init__(
         self,
         base_repo_path: str | Path,

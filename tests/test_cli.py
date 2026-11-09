@@ -71,7 +71,8 @@ def test_parser_defaults(contract_and_repo: tuple[Path, Path]) -> None:
     assert args.command == "run"
     assert args.contract == contract_path
     assert args.repo == repo_path
-    assert args.sandbox == "local"
+    assert args.sandbox == "docker"
+    assert args.unsafe_local is False
     assert args.json is False
     assert args.model is None
 
@@ -98,10 +99,36 @@ def test_parser_accepts_sandbox_model_and_json_flags(
     assert args.model == "claude-x"
 
 
-def test_parser_rejects_unknown_sandbox_choice(contract_and_repo: tuple[Path, Path]) -> None:
+@pytest.mark.parametrize("choice", ["aws", "local"])
+def test_parser_rejects_unknown_sandbox_choice(
+    contract_and_repo: tuple[Path, Path], choice: str
+) -> None:
+    """P0 D5: "local" is not a sandbox you pick by name any more."""
     contract_path, repo_path = contract_and_repo
     with pytest.raises(SystemExit):
-        _build_parser().parse_args(["run", str(contract_path), str(repo_path), "--sandbox", "aws"])
+        _build_parser().parse_args(["run", str(contract_path), str(repo_path), "--sandbox", choice])
+
+
+def test_unsafe_local_selects_the_local_sandbox_and_warns(
+    monkeypatch: pytest.MonkeyPatch, contract_and_repo: tuple[Path, Path], capsys
+) -> None:
+    contract_path, repo_path = contract_and_repo
+    captured: dict[str, object] = {}
+
+    def fake_run_task(contract, repo, provider, **kwargs):
+        captured["sandbox_factory"] = kwargs["sandbox_factory"]
+        return None, _fake_decision(FinalDecision.PASS), _fake_evidence()
+
+    monkeypatch.setattr("aigis.cli.ClaudeProvider", _FakeProvider)
+    monkeypatch.setattr("aigis.cli.run_task", fake_run_task)
+    args = _build_parser().parse_args(["run", str(contract_path), str(repo_path), "--unsafe-local"])
+
+    _run(args)
+
+    from aigis.sandbox.local_cow import LocalCowSandbox
+
+    assert captured["sandbox_factory"] is LocalCowSandbox
+    assert "--unsafe-local" in capsys.readouterr().err
 
 
 # --- _run: exit codes and output, ClaudeProvider/run_task both mocked ------

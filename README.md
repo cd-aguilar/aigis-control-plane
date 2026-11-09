@@ -57,10 +57,12 @@ TaskContract → Agent → ToolRequest → Policy Engine → Sandbox → Executi
   with `risk_level: CRITICAL` denies everything, `HIGH` requires a human,
   before any path/command rule is even consulted.
 - **Sandbox** — an ephemeral copy of the repo is where an ALLOWed request
-  actually runs; a DENY never touches it. Two modes: a local copy-on-write
-  directory (**the current default**, which does *not* isolate the host
-  filesystem or the network for executed code) or, with `--sandbox docker`,
-  a non-root, read-only-root container with no network (`--network none`).
+  actually runs; a DENY never touches it. **By default a container**
+  (since P0 D5): the AIGIS sandbox image verified by image ID, no network
+  (`--network none`), no capabilities, non-root, read-only root and a
+  read-only workspace mount. A local copy-on-write mode with *no*
+  isolation exists only behind `--unsafe-local`, and every run in it is
+  recorded as `isolation: none`.
 - **Quality Gates** — `pytest`/`ruff` run *inside* the sandbox and are graded
   from their own structured JSON output, never from regex over stdout.
 - **Evidence Bundle** — every run persists to `evidence/<run-id>/`: diff,
@@ -93,20 +95,22 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > observed on the filesystem and fails the run (D4); tests, test/lint
 > config and the pytest report are protected and taken from the base repo
 > when the gates run (D3). The original proof of concept now ends in
-> `FAIL`, not `PASS`. Still open: the agent's own code still runs — pytest
-> imports what it wrote, both in `run_tests` and in the gate — and in the
-> default local sandbox that code sees the host filesystem (base repo
-> included) and the network (D5). Until the fix is complete, AIGIS
-> **cannot claim** to prevent secret access or to verify a task
+> `FAIL`, not `PASS`. Since D5 the default sandbox is a container with
+> no network and no view of the host (base repo included). What remains:
+> the agent's own code still runs — pytest imports what it wrote, in
+> `run_tests` and in the gate — so inside the container it can still
+> tamper with its own grading (e.g. patch `_pytest`) and whatever it
+> prints reaches the LLM. The post-fix benchmark (closing criterion 8) is
+> still to be run. Until then AIGIS **cannot claim** to verify a task
 > independently of the agent.
 > Findings: [`docs/security/P0-review.md`](docs/security/P0-review.md).
 > Fix design and closing criteria: [`docs/security/P0-design.md`](docs/security/P0-design.md).
 > Remaining failing regressions (xfail strict): `tests/test_p0_regressions.py`.
 
-- **The default sandbox is not isolated.** `aigis run` uses the local
-  copy-on-write sandbox unless you pass `--sandbox docker`; in local mode,
-  executed code sees the host filesystem and has network access. "No
-  network" holds in docker mode only.
+- **`--unsafe-local` is not a sandbox.** It runs the agent's code as
+  host subprocesses: host filesystem and network visible. It is explicit,
+  warned about on stderr, recorded as `isolation: none` in
+  `environment.json` and named in the decision's reason.
 - **Docker mode needs the AIGIS sandbox image** (`make sandbox-image`).
   Since D5 it runs that image by its verified image ID (base pinned by
   digest, pytest/ruff pinned), with `--cap-drop ALL`, `no-new-privileges`,
@@ -148,9 +152,10 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > enforced structurally, not just documented. Agent Runtime (reducer +
 > provider protocol) with a real `ClaudeProvider` adapter. Policy Engine
 > (deterministic ALLOW/DENY/REQUIRE_HUMAN) in front of a real Sandbox
-> (`LocalCowSandbox`, the default, plus a `DockerSandbox` — no network,
-> non-root, read-only + tmpfs, resource caps — verified against a real Docker
-> daemon on Docker Desktop/Windows; see Known limitations). Executable Quality Gates (`pytest`/`ruff` inside the sandbox, graded
+> (`DockerSandbox` by default since P0 D5 — no network, no capabilities,
+> non-root, read-only root and workspace, resource caps, image verified by
+> ID; container tests mandatory in CI — plus `LocalCowSandbox`, only behind
+> `--unsafe-local`; see Known limitations). Executable Quality Gates (`pytest`/`ruff` inside the sandbox, graded
 > from structured JSON), a real Evidence Bundle writer, and a fail-closed
 > Decision Engine. A Security Evaluation Suite (since 2026-11-09 it also
 > holds the P0 evals S07 Grader Tampering and S08 Untracked Modification,
@@ -173,8 +178,8 @@ plus the metrics computed from that: **[`docs/DEMO.md`](docs/DEMO.md)**.
 > rate, 4.9 average iterations/tool calls, 10.6s average latency, $0.30
 > total cost, $0.038 cost-to-pass — reported honestly as N=8 (one run each),
 > not a statistically significant benchmark.
-> **422 tests collected (Windows with Docker Desktop: 409 passed, 5 xfailed
-> P0 regressions, 8 platform skips), `ruff check` clean.** A minimal CI workflow (pytest + ruff on
+> **426 tests collected (Windows with Docker Desktop: 417 passed, 1 xfailed
+> P0 regression (D6), 8 platform skips), `ruff check` clean.** A minimal CI workflow (pytest + ruff on
 > push/PR to `main`) is defined in `.github/workflows/ci.yml`.
 >
 > The initial MVP scope (ARCHITECTURE.md section 21) was completed on

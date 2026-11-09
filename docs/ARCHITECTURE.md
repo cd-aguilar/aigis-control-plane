@@ -187,7 +187,7 @@ AIGIS se divide conceptualmente en dos planos.
                   └────────────────────────────────┘
 ```
 
-\* Solo en modo docker (`--sandbox docker`). El default actual es `LocalCowSandbox`, sin aislamiento de red ni de host (sección 11). Mientras el P0 siga abierto, el flujo de este diagrama tiene un desvío: la policy no evalúa qué hace el código del agente que pytest importa (en `run_tests` o en el gate). Desde D4, lo que ese código cambia en el workspace sí lo ve la evaluación de scope, y desde D3 no llega a los insumos de los gates; lo que hace fuera del workspace en modo local no lo ve nadie (D5). Desde D1 no hay comando genérico — ver `docs/security/P0-review.md` y `STATUS.md`.
+\* Docker es el default de `aigis run` desde P0 D5 (9 nov 2026); `LocalCowSandbox`, sin aislamiento de red ni de host, solo con `--unsafe-local` (sección 11). El flujo de este diagrama tiene un desvío conocido: la policy no evalúa qué hace el código del agente que pytest importa (en `run_tests` o en el gate). Lo que ese código cambia en el workspace lo ve la evaluación de scope (D4), no llega a los insumos de los gates (D3), y en docker no ve el host ni la red (D5); sí puede alterar su propia evaluación desde adentro. Desde D1 no hay comando genérico — ver `docs/security/P0-review.md` y `STATUS.md`.
 
 ---
 
@@ -267,7 +267,7 @@ Esto convierte la autorización en parte de la evidencia. Ver `SECURITY.md` para
 
 Ejecución en entorno aislado. En modo docker (`DockerSandbox`): non-root, sin red (`--network none`), resource limits, ephemeral filesystem, read-only base repository, execution timeout, PID/process limits.
 
-_Estado real (8 nov 2026): esa lista describe `DockerSandbox` (`--sandbox docker`), no el default. `aigis run` usa `LocalCowSandbox` por defecto, que tiene filesystem efímero, timeout y límites de CPU/memoria, pero no aísla red ni host y **no tiene límite de PIDs/procesos** (solo `DockerSandbox` lo tiene, vía `--pids-limit`). Docker por defecto es D5 del P0 — ver `docs/security/P0-design.md` y `SECURITY.md`._
+_Estado real (9 nov 2026, P0 D5): esa lista describe `DockerSandbox`, que es el default de `aigis run`, con `--cap-drop ALL`, `no-new-privileges`, workspace montado de solo lectura y la imagen propia verificada por image ID (`sandbox/Dockerfile`, `make sandbox-image`). `LocalCowSandbox` (filesystem efímero, timeout y límites de CPU/memoria, sin aislamiento de red ni host, sin límite de PIDs) queda solo para `--unsafe-local`, registrado como `isolation: none` — ver `SECURITY.md`._
 
 El objetivo no es afirmar "Docker hace imposible escapar", sino **reducir el blast radius y contener la ejecución del agente**.
 
@@ -423,7 +423,7 @@ No incorporar inicialmente: LangChain, LangGraph, Chroma, Redis, Postgres, Kafka
 
 **MVP (Fases 0-6) completo desde el 2026-08-29.** 223 tests unitarios verdes, 1 skip condicional al entorno, `ruff check` limpio. Conteo al 7 sep 2026 (tras Dev Container + Makefile de demo): 234 recolectados — 233 verdes, 1 skip.
 
-**P0 de seguridad abierto (desde el 22 sep 2026):** bypass de scope vía `run_command` que termina en `PASS` — ver `docs/security/P0-review.md` (hallazgos), `docs/security/P0-design.md` (fix D1-D6 y criterios de cierre) y `STATUS.md` (avance commit por commit). Bloquea todo lo demás. Hechos D4 (cambios observados, `d9933bc`), D2 (prohibidos fuera del workspace, `1ac97c0`), D3 (insumos de los gates protegidos, `9279473`, endurecido en el 6c: sin PASS silencioso por skip/xfail o `noqa`) y D1 (`run_tests`/`run_lint` con perfiles fijos, sin comando genérico); el PoC original ya da FAIL. Faltan D5, D6 y re-correr el benchmark. Conteo actual (9 nov 2026): **422 tests recolectados** — Windows con Docker Desktop 409 passed / 5 xfailed (regresiones del P0 que quedan, `xfail(strict=True)`) / 8 skips de plataforma; en CI los tests de contenedor son obligatorios (`AIGIS_REQUIRE_DOCKER=1`). CI mínima (pytest + ruff) en `.github/workflows/ci.yml` desde el 8/11.
+**P0 de seguridad abierto (desde el 22 sep 2026):** bypass de scope vía `run_command` que termina en `PASS` — ver `docs/security/P0-review.md` (hallazgos), `docs/security/P0-design.md` (fix D1-D6 y criterios de cierre) y `STATUS.md` (avance commit por commit). Bloquea todo lo demás. Hechos D4 (cambios observados, `d9933bc`), D2 (prohibidos fuera del workspace, `1ac97c0`), D3 (insumos de los gates protegidos, `9279473`, endurecido en el 6c: sin PASS silencioso por skip/xfail o `noqa`), D1 (`run_tests`/`run_lint` con perfiles fijos, sin comando genérico) y D5 (docker por defecto, imagen verificada por ID, `--unsafe-local` explícito); el PoC original ya da FAIL. Faltan D6 y re-correr el benchmark. Conteo actual (9 nov 2026): **426 tests recolectados** — Windows con Docker Desktop 417 passed / 1 xfailed (regresiones del P0 que quedan, `xfail(strict=True)`) / 8 skips de plataforma; en CI los tests de contenedor son obligatorios (`AIGIS_REQUIRE_DOCKER=1`). CI mínima (pytest + ruff) en `.github/workflows/ci.yml` desde el 8/11.
 
 **Completado:**
 - Arquitectura conceptual y tesis del proyecto consolidadas (este documento).

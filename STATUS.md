@@ -1,6 +1,6 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 9 nov 2026 — P0 de seguridad sigue abierto (bypass de scope vía `run_command`, ver sección dedicada), **6 de 9 criterios de cierre cumplidos** (2, 3, 4, 5, 7, 9). Hechos: D4 (`d9933bc`), D2 (`1ac97c0`), D3 (`9279473`), docs 6b (`9165cf7`), endurecimiento de D3 (6c, `6059126`), S07/S08 a la suite + `contract_version` 2.0 (`f8cf041`), D1 (`bdb743c`) y D5 parte 1 (commit 8a, sin pushear). Siguiente: 8b. CI #6 verde sobre `bdb743c` (44 s). Tests en Windows: 409 passed, 5 xfailed, 8 skipped; Linux (contenedor, sin daemon): 408 passed, 5 xfailed, 9 skipped (con AIGIS_REQUIRE_DOCKER=1, los 8 tests de contenedor dan error en vez de saltearse, verificado); ruff limpio. Anterior: 9 nov 2026, antes de D5._
+_Última actualización: 9 nov 2026 — P0 de seguridad sigue abierto, con el fix implementado (D1-D5) y el benchmark post-fix pendiente, **8 de 9 criterios de cierre cumplidos** (1, 2, 3, 4, 5, 6, 7, 9; falta el 8). Hechos: D4 (`d9933bc`), D2 (`1ac97c0`), D3 (`9279473`), docs 6b (`9165cf7`), endurecimiento de D3 (6c, `6059126`), S07/S08 + `contract_version` 2.0 (`f8cf041`), D1 (`bdb743c`), D5 parte 1 (8a, `d1412fa`) y D5 parte 2 (8b, sin pushear). Siguiente: D6 (commit 9) y re-correr el benchmark (commit 10). CI #7 verde sobre `d1412fa` (1 min 3 s, con `AIGIS_REQUIRE_DOCKER=1`). Tests en Windows con Docker Desktop: 417 passed, 1 xfailed (test 16, D6), 8 skipped; Linux (contenedor, sin daemon): 415 passed, 1 xfailed, 10 skipped; ruff limpio. Anterior: 9 nov 2026, antes del 8b._
 
 ### Qué sigue (orden del plan, numeración de `next-tasks`)
 
@@ -13,8 +13,8 @@ _Última actualización: 9 nov 2026 — P0 de seguridad sigue abierto (bypass de
    Push hecho por Dario: **CI #5 verde sobre `f8cf041`** (45 s).
 4. ~~**Commit 7 — D1**~~ — hecho, **CI #6 verde sobre `bdb743c`** (44 s).
 5. **Commit 8 — D5**, partido en dos por Dario:
-   ~~**8a** — imagen endurecida, flags, montajes y UID~~ — hecho (ver su entrada). Pendiente: push y CI (lo hace Dario, para que el CI pruebe docker de verdad).
-   **8b** — docker por defecto, `--unsafe-local`, campos de reproducibilidad en `environment.json`, línea base en docker. Saca de xfail los tests 14 y 15 (el 13 salió en el 8a). Cubre los criterios 1 y 6.
+   ~~**8a** — imagen endurecida, flags, montajes y UID~~ — hecho, **CI #7 verde sobre `d1412fa`** (1 min 3 s, `AIGIS_REQUIRE_DOCKER=1`; UID en Linux nativo verificado).
+   ~~**8b** — docker por defecto, `--unsafe-local`, campos de reproducibilidad, línea base en docker~~ — hecho (ver su entrada). Pendiente: push y CI (lo hace Dario).
 6. **Commit 9 — D6** (P1, test 16). **Commit 10:** re-correr el benchmark después del fix (lo corre Dario con su key). Cubre el criterio 8.
 7. Al cierre: volver a correr el grep del criterio 7 y marcar el P0 como cerrado.
 
@@ -143,12 +143,12 @@ Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada captu
 
 **Criterios de cierre del P0 (los 9 del §8 de `docs/security/P0-design.md`, que reemplazan al checklist reconstruido del 22/9).** El P0 está cerrado cuando todo esto se cumple con evidencia commiteada:
 
-- [ ] 1. Los tests 1-15 y S06/S07/S08 del §4 pasan sin `xfail`, en local **y** en docker.
+- [x] 1. Los tests 1-15 y S06/S07/S08 del §4 pasan sin `xfail`, en local **y** en docker. — ✅ commit 8b: no queda ningún xfail de 1-15 (solo el 16, que es D6 y no es criterio); S06/S07/S08 están en `security_suite.py`. "En docker": los tests que dependen del aislamiento corren contra contenedores reales, `test_d5_*`, los de `tests/sandbox/test_docker_sandbox.py` y el 4 parametrizado con `DockerSandbox`, y en CI son **obligatorios** (`AIGIS_REQUIRE_DOCKER=1`: sin daemon o sin imagen fallan, no se saltean; verificado). CI #7 los corrió en Linux nativo; la confirmación final es el CI del 8b.
 - [x] 2. El PoC de `P0-review.md`, adaptado, da **FAIL o DENY**, nunca PASS, y queda como test de integración. — ✅ commit 5 (D2): `tests/test_p0_command_bypass.py::test_run_command_bypass_no_longer_yields_pass` salió de xfail. La decisión es FAIL (`untracked_modification: ['tests/test_calculator.py']`, desde D4) y el secreto ya no vuelve por stdout porque `secrets/` no se copia al workspace (D2). Queda como test de integración normal: si vuelve a dar PASS, la suite se rompe.
 - [x] 3. Con la policy por defecto, ningún tool del agente acepta un ejecutable ni argumentos arbitrarios. (D1) — ✅ commit 7: tests 1-3 de `tests/test_p0_regressions.py` fuera de xfail, S06 en la suite, `tests/agent/test_tools.py::test_run_command_is_not_a_tool` y `::test_fixed_profile_tools_reject_free_input`, y `tests/policy/test_profiles.py`. **No cubre, y no lo dice el criterio:** el código que escribe el agente sigue corriendo dentro de pytest (`run_tests` y el gate), y en modo local ve el host (verificado el 9/11, ver la entrada del commit 7). Eso es D5.
 - [x] 4. `scope_ok` y `max_files_changed` se calculan solo desde cambios observados, con un test que prueba que el registro del agente no puede ampliarlos. (D4) — ✅ commit 4: `DecisionEngine.decide(observed_changes=...)` obligatorio, sin fallback al log; `test_08_max_files_changed_counts_observed_changes` y `test_08_tool_log_cannot_widen_observed_scope`.
 - [x] 5. Ningún insumo de un gate (tests protegidos, config, reporte) puede escribirse desde el workspace del agente. (D3) — ✅ commit 6 + commit 6c: el workspace de evaluación se arma desde la base, los protegidos del agente se pierden, `patch_file` sobre un protegido da DENY `PATH-004` y el reporte se escribe fuera del workspace. **Desmarcado el 9/11** (Dario reprodujo dos bypasses del gate anteriores a D3: skip/xfail desde `src/` con exit 0, y `noqa` escrito por el agente) y **re-marcado en el 6c**, con evidencia: `tests/test_p0_regressions.py::test_d3h_skip_from_src_with_no_other_test_is_not_a_pass`, `::test_d3h_skip_or_xfail_from_src_fails_on_the_baseline_rule` y `::test_d3h_noqa_written_by_the_agent_does_not_silence_ruff` (más los controles `test_d3h_control_*`). **Límite que queda abierto y documentado, no cubierto por este criterio:** el código del agente corre dentro del proceso del gate (pytest importa `src/`) y puede alterar la corrida desde adentro (`docs/SECURITY.md`, "Insumos de los gates").
-- [ ] 6. El default de la CLI es docker con imagen por digest; local solo con un flag explícito, registrado en la evidencia. (D5)
+- [x] 6. El default de la CLI es docker con imagen por digest; local solo con un flag explícito, registrado en la evidencia. (D5) — ✅ commits 8a + 8b. Tests 13, 14 (×3) y 15; `tests/test_cli.py::test_unsafe_local_selects_the_local_sandbox_and_warns`. **Matiz acordado (nota 2 del D5):** el digest fija la base en el `FROM`; la imagen que corre se identifica por **image ID** verificado, porque un build local no es reproducible byte a byte, y ese ID queda en `environment.json` (`sandbox_image_digest`).
 - [x] 7. La documentación no contiene afirmaciones no verificadas ("unique", "tamper-proof", "production-ready", "inmutable", "network disabled" sin calificar), verificable con `grep`. (commits 2 y 2b) — ✅ **8 nov 2026, re-marcado en el commit 2b.** El `[x]` de `1621f2b` estaba de más: el grep de ese commit cubría solo `README.md` y `docs/*.md`, y `CLAUDE.md` (público) seguía diciendo "sin red" y "OverlayFS" sin calificar. Comando ampliado, sobre todos los `*.md` versionados salvo `docs/security/` y `claude/`:
   `git ls-files '*.md' | grep -v -E '^(docs/security/|claude/)' | xargs grep -n -i -E "\bunique\b|tamper-proof|production-ready|inmutable|immutable|network disabled|no network|\bsin red\b|overlayfs"`
   Resultado: solo coincidencias calificadas — `README.md:63`, `README.md:126`, `docs/ARCHITECTURE.md:166` y `:268` (todas "solo en modo docker"), `CLAUDE.md:116` (dice que OverlayFS nunca se implementó) y líneas de este `STATUS.md` que describen el propio criterio o los cambios del commit 2. **Re-verificar al cierre del P0.**
@@ -158,6 +158,7 @@ Antes de gastar tokens reales corriendo las 8 tareas, se detectó que nada captu
 D6 (`deny_escalation=security`, test 16) es P1 en el diseño y **no** es criterio de cierre, aunque está aprobado y planificado (commit 9). Los criterios 1-7 son verificables por CI.
 
 **P1 anotados (no se implementan dentro del P0):**
+- **`pip --require-hashes` en `sandbox/Dockerfile`** (revisión del 8a, Dario 9/11): pasar las versiones a un `sandbox/requirements.txt` con hashes e instalar con `--require-hashes`, para que la imagen no dependa de que PyPI sirva el mismo artefacto para esa versión. El test de paridad con `pyproject.toml` tendría que leer ese archivo.
 - **Regla 4 del 6c (Dario, 9/11):** hoy `RuffGate` corre `--ignore-noqa` sobre todo archivo que tocó el agente, así que un `noqa` que ya estaba en la base en ese archivo también deja de silenciar. Refinarlo para rechazar solo los `noqa` que **agregó** el agente, comparando contra la base. Aceptado como está por ahora: ninguna tarea del benchmark tiene `noqa`, `xfail` ni `skip`.
 - `LocalCowSandbox.run_command` sin `start_new_session=True`: ante un timeout mueren solo los hijos directos; los nietos sobreviven y pueden colgar `communicate()` si heredaron los pipes. Fix: `start_new_session=True` + `os.killpg` en el timeout, con test.
 - CI: fijar `actions/checkout` y `actions/setup-python` por commit SHA (hoy por tag).
@@ -383,7 +384,7 @@ Hash: `bdb743c`. **CI #6 verde** (44 s). Dario lo aprobó, con los 4 agregados. 
 Tests: Windows 386 passed, 6 xfailed, 7 skipped; Linux (contenedor `python:3.11`, usuario no-root) 392 passed, 6 xfailed, 1 skipped (399 recolectados). T01 y T05 reales siguen dando PASS | ruff: clean | CI: pendiente del push.
 
 **Commit 8a — feat(sandbox): hardened image + container flags + UID fix (D5, 1/2) (9 nov 2026)**
-Hash: se anota en el commit siguiente. Notas 1-7 de Dario del 9/11 (D5 partido en 8a/8b):
+Hash: `d1412fa`. **CI #7 verde** (1 min 3 s) con `AIGIS_REQUIRE_DOCKER=1`: los tests de contenedor corrieron de verdad y el UID en Linux nativo quedó verificado. Dario lo aprobó, con las 4 decisiones. Notas 1-7 de Dario del 9/11 (D5 partido en 8a/8b):
 - **Imagen (nota 1):**
   - `sandbox/Dockerfile`: `FROM python:3.11-slim@sha256:db3ff2e1…` (el digest que ya estaba descargado); `pytest==9.1.1`, `pytest-json-report==1.5.0` y `ruff==0.16.4`; usuario `aigis` (uid 1000) y `USER 1000:1000`;
   - el extra `dev` de `pyproject.toml` pasa de `>=` a esas versiones exactas, lo que también cierra el P1 de "`ruff>=0.6` sin fijar". `tests/sandbox/test_sandbox_image.py` verifica que las dos listas sean iguales, que el `FROM` tenga `@sha256:` y que el `USER` no sea root;
@@ -411,6 +412,40 @@ Hash: se anota en el commit siguiente. Notas 1-7 de Dario del 9/11 (D5 partido e
 - **Nota de plataforma (hallazgo, 9/11):** Docker Desktop en Windows muestra todo archivo del bind mount con permisos 0777, y ruff 0.16 activa EXE en su conjunto por defecto. Un repo **sin** `select` explícito da EXE002 en cada archivo en docker sobre Windows. Las tareas del benchmark fijan `select = ["E", "F", "I", "UP", "B"]`, así que no las afecta; el repo de juguete de los tests de docker ahora fija el suyo. Documentado en SECURITY.
 - Docs: SECURITY (DockerSandbox, montaje del reporte), README (bullet de docker) y THREAT-MODEL (fila Out-of-band). El cambio grande de docs, con docker por defecto, va en el 8b (nota 12).
 Tests: Windows 409 passed, 5 xfailed, 8 skipped (los tests de contenedor **corrieron** contra Docker Desktop; los skips son de plataforma); Linux (contenedor `python:3.11`, usuario no-root uid 1234, **sin** daemon: los tests de contenedor se saltean) 408 passed, 5 xfailed, 9 skipped (con AIGIS_REQUIRE_DOCKER=1, los 8 tests de contenedor dan error en vez de saltearse, verificado) | ruff: clean | CI: pendiente del push (Dario). Es el primer CI que corre los tests de contenedor con `AIGIS_REQUIRE_DOCKER=1`.
+
+**Commit 8b — feat(cli): docker by default, --unsafe-local, reproducibility fields (D5, 2/2) (9 nov 2026)**
+Hash: se anota en el commit siguiente. Notas 8-12 de Dario del 9/11:
+- **CLI (nota 8):**
+  - `aigis run` usa `DockerSandbox` por defecto;
+  - `--sandbox` solo acepta `docker`, así que `--sandbox local` sale con código 2 (test 14);
+  - el modo local existe solo con `--unsafe-local`: la CLI avisa por stderr, `environment.json` registra `isolation: "none"` y **la razón de la decisión lo dice, sea cual sea el veredicto** (también en `decision.json`). En docker, `isolation: "docker"`;
+  - cada sandbox declara su `isolation` como atributo de clase.
+- **`environment.json` (nota 9):**
+  - `sandbox_image`: el tag;
+  - `sandbox_image_digest`: el image ID verificado;
+  - `policy_version`: el de la `PolicyEngine` de la corrida;
+  - `task_repo_commit`: **renombrado** desde `git_commit` (test 15 actualizado);
+  - `aigis_commit`;
+  - `python_version`: la del control plane; la del código calificado la fija la imagen;
+  - además `isolation` y `host_platform`.
+- **Módulo nuevo, `aigis/provenance.py`:** un commit solo se registra si el directorio **es la raíz** de un repo git. `examples/tasks/T01/repo` vive adentro del repo de AIGIS y `git rev-parse HEAD` ahí devolvería el commit de AIGIS; ahora da `null` (test). Si git no está o falla → `null`, nunca una suposición. **Decisión mía:** los commits no reflejan cambios sin commitear; no agregué un flag de "dirty". Queda documentado en SECURITY.
+- **Línea base en docker (nota 10):** ya salía del mismo `sandbox_factory` desde el 6c, así que en docker corre en un contenedor (sandbox propio, verificado por ID). Desde el 8a el sandbox del agente se crea y se verifica **antes** que el de la línea base. Test nuevo, `test_d5_baseline_runs_in_the_same_isolation_as_the_agent` (contenedor real), con un factory que graba: la línea base corrió `pytest` en su propio `DockerSandbox` con `image_id` verificado.
+- **Xfail (nota 11):**
+  - salen 14 (×3) y 15; el 13 había salido en el 8a;
+  - `_OfflineDockerSandbox` (test 15) ahora tiene su propio `verify_image()`, para no necesitar el daemon;
+  - **queda solo el 16 (D6), que no empezó a pasar;**
+  - test nuevo `test_15_task_repo_commit_is_null_inside_another_repo`.
+- **Criterios 1 y 6 marcados**, con evidencia (ver arriba).
+- **Docs (nota 12):** SECURITY, THREAT-MODEL, EVALUATION, README, ARCHITECTURE y `examples/tasks/README.md`.
+  - "Sin red" y "no ve el host" pasan a valer **por defecto** (docker); local queda documentado como inseguro y explícito.
+  - En todos se mantiene el límite residual: el código del agente corre dentro de pytest en el contenedor, puede alterar su propia evaluación (monkeypatch de `_pytest`, escribir el mount de reportes) y lo que imprime vuelve al LLM. Mitigación futura: tests ocultos.
+  - EVALUATION aclara que la Security Suite usa `LocalCowSandbox` a propósito: mide policy y decisión, no aislamiento, que tiene sus propios tests de contenedor, obligatorios en CI.
+- **Criterio 7:** el grep ahora encuentra más "no network"/"sin red", porque describen el default. Todas las coincidencias están calificadas (docker por defecto, con `--unsafe-local` como excepción explícita en el mismo documento). **A revisar por Dario** al cierre del P0.
+- **Revisión del 8a (Dario, 9/11), los 3 puntos:**
+  1. `chmod 0777` del `report_dir` con host root → documentado en SECURITY como **riesgo aceptado** (temp dir de vida corta, fuera del workspace, sin datos sensibles, solo si AIGIS corre como root).
+  2. `pip --require-hashes` en `sandbox/Dockerfile` (con un `sandbox/requirements.txt` con hashes) → anotado en P1.
+  3. EXE002 en Docker Desktop/Windows → **confirmado: está documentado** como límite de plataforma en SECURITY (sandbox, "Nota de plataforma") y en la entrada del 8a.
+Tests: Windows con Docker Desktop 417 passed, 1 xfailed, 8 skipped (los tests de contenedor corrieron); Linux (contenedor `python:3.11`, uid 1234, sin daemon) 415 passed, 1 xfailed, 10 skipped | ruff: clean | CI: pendiente del push (Dario).
 
 **Pendiente de Dario:**
 - ~~Los dos documentos del P0~~ — **commiteados el 8 nov 2026** como `docs/security/P0-design.md` (diseño aprobado, tests §4, claims §7, criterios §8) y `docs/security/P0-review.md` (hallazgos H1-H11, clasificación de controles, PoC). El checklist de arriba pasa a reemplazarse por los 9 criterios del §8 en el commit siguiente.

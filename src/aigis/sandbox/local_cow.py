@@ -49,6 +49,10 @@ class SandboxPathError(ValueError):
 
 
 class LocalCowSandbox:
+    # Recorded in environment.json (P0 D5): commands run as host
+    # subprocesses, with the host filesystem and the network visible.
+    isolation = "none"
+
     def __init__(self, base_repo_path: str | Path) -> None:
         self.base_repo_path = Path(base_repo_path).resolve()
         if not self.base_repo_path.is_dir():

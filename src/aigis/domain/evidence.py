@@ -41,7 +41,15 @@ class EnvironmentMetadata(BaseModel):
     task_contract_version: str | None = None
     policy_version: str | None = None
 
-    git_commit: str | None = None
+    # P0 D5 provenance. ``isolation``: "docker" (DockerSandbox) or "none"
+    # (the explicit --unsafe-local mode). ``sandbox_image_digest`` is the
+    # verified image ID the commands ran on (a local build is not
+    # reproducible byte for byte, so that ID is the reference).
+    # ``task_repo_commit``: HEAD of the repo under test, None if it is not
+    # a git root; ``aigis_commit``: the AIGIS checkout that ran.
+    isolation: str | None = None
+    task_repo_commit: str | None = None
+    aigis_commit: str | None = None
     sandbox_image: str | None = None
     sandbox_image_digest: str | None = None
     python_version: str | None = None

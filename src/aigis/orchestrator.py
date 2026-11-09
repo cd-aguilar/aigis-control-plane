@@ -15,6 +15,7 @@ a plain function, without spawning a subprocess or touching argv.
 
 from __future__ import annotations
 
+import platform
 import shutil
 import tempfile
 import uuid
@@ -38,6 +39,7 @@ from aigis.evidence.bundle import EvidenceBundleWriter
 from aigis.policy.config import PolicyConfig
 from aigis.policy.engine import PolicyEngine
 from aigis.policy.executor import SandboxedToolExecutor
+from aigis.provenance import aigis_commit, git_commit_of, python_version
 from aigis.sandbox.docker_sandbox import SandboxImageError
 from aigis.sandbox.local_cow import LocalCowSandbox
 
@@ -85,7 +87,14 @@ def run_task(
             verify_image()
         except SandboxImageError as exc:
             return _sandbox_unavailable(
-                contract, selected, run_id, evidence_base_dir, model_provider, model, str(exc)
+                contract,
+                selected,
+                run_id,
+                evidence_base_dir,
+                _environment(
+                    run_id, contract, base_repo, sandbox, None, model_provider, model, None
+                ),
+                str(exc),
             )
 
     # D3 hardening: gates that compare against the base (PytestGate's
@@ -109,7 +118,8 @@ def run_task(
     sandbox.create(exclude=contract.forbidden_paths)
     excluded_paths = list(getattr(sandbox, "excluded_paths", []))
     try:
-        executor = SandboxedToolExecutor(PolicyEngine(contract, policy_config), sandbox)
+        policy_engine = PolicyEngine(contract, policy_config)
+        executor = SandboxedToolExecutor(policy_engine, sandbox)
         runtime = AgentRuntime(contract, provider, executor)
         state = TaskState(run_id=run_id, task_id=contract.task_id)
         runtime.run(state)
@@ -157,13 +167,15 @@ def run_task(
     usage = getattr(provider, "usage_summary", None)
 
     writer = EvidenceBundleWriter(base_dir=evidence_base_dir)
-    environment = EnvironmentMetadata(
-        run_id=run_id,
-        model_provider=model_provider,
-        model=model,
-        task_contract_version=contract.contract_version,
-        total_input_tokens=usage["input_tokens"] if usage else None,
-        total_output_tokens=usage["output_tokens"] if usage else None,
+    environment = _environment(
+        run_id,
+        contract,
+        base_repo,
+        sandbox,
+        policy_engine.policy_version,
+        model_provider,
+        model,
+        usage,
     )
     evidence = writer.write(
         run_id=run_id,
@@ -184,9 +196,53 @@ def run_task(
         gate_results=gate_results,
         observed_changes=observed_changes,
     )
+    decision = _with_isolation_note(decision, environment)
     writer.write_decision(run_id, decision)
 
     return state, decision, evidence
+
+
+_UNSAFE_LOCAL_NOTE = (
+    "; isolation: none (--unsafe-local: the agent's code ran with the host "
+    "filesystem and the network visible)"
+)
+
+
+def _with_isolation_note(decision: Decision, environment: EnvironmentMetadata) -> Decision:
+    """P0 D5: a run outside docker says so in its own verdict, not only in
+    environment.json -- whatever the verdict is."""
+    if environment.isolation != "none":
+        return decision
+    return decision.model_copy(update={"reason": decision.reason + _UNSAFE_LOCAL_NOTE})
+
+
+def _environment(
+    run_id: str,
+    contract: TaskContract,
+    base_repo: Path,
+    sandbox: Sandbox,
+    policy_version: str | None,
+    model_provider: str,
+    model: str,
+    usage: dict | None,
+) -> EnvironmentMetadata:
+    """environment.json, with the P0 D5 provenance fields."""
+    return EnvironmentMetadata(
+        run_id=run_id,
+        model_provider=model_provider,
+        model=model,
+        task_contract_version=contract.contract_version,
+        policy_version=policy_version,
+        isolation=getattr(sandbox, "isolation", None),
+        sandbox_image=getattr(sandbox, "image", None),
+        sandbox_image_digest=getattr(sandbox, "image_id", None),
+        task_repo_commit=git_commit_of(Path(base_repo)),
+        aigis_commit=aigis_commit(),
+        python_version=python_version(),
+        host_platform=platform.platform(),
+        total_input_tokens=usage["input_tokens"] if usage else None,
+        total_output_tokens=usage["output_tokens"] if usage else None,
+    )
 
 
 def _sandbox_unavailable(
@@ -194,8 +250,7 @@ def _sandbox_unavailable(
     selected: list[QualityGate],
     run_id: str,
     evidence_base_dir: str | Path,
-    model_provider: str,
-    model: str,
+    environment: EnvironmentMetadata,
     reason: str,
 ) -> tuple[TaskState, Decision, Evidence]:
     """The sandbox cannot be trusted to run anything (P0 D5: image missing
@@ -214,12 +269,6 @@ def _sandbox_unavailable(
     ]
     state = TaskState(run_id=run_id, task_id=contract.task_id)
     writer = EvidenceBundleWriter(base_dir=evidence_base_dir)
-    environment = EnvironmentMetadata(
-        run_id=run_id,
-        model_provider=model_provider,
-        model=model,
-        task_contract_version=contract.contract_version,
-    )
     evidence = writer.write(
         run_id=run_id,
         contract=contract,

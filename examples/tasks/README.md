@@ -32,8 +32,13 @@ Bundle landed (`evidence/<run-id>/` by default — gitignored, since it's
 regenerated per run). Exit codes: `0` PASS, `1` FAIL, `2` NEEDS_HUMAN, `3`
 a setup problem (missing API key, Docker not running, etc.) rather than a
 task verdict. Add `--json` to print the `Decision` as JSON instead of the
-one-line summary, or `--sandbox docker` to run inside `DockerSandbox`
-instead of the default `LocalCowSandbox`.
+one-line summary.
+
+The run happens inside `DockerSandbox` by default (P0 D5): build the
+sandbox image once with `make sandbox-image` (a missing or different image
+gives `NEEDS_HUMAN` without running anything). `--unsafe-local` runs it in a
+local copy with **no isolation** -- the agent's code sees the host and the
+network -- and the run is recorded as `isolation: none`.
 
 Each run copies `repo/` into an ephemeral sandbox first — running the same
 task twice never mutates the checked-in example.

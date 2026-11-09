@@ -1234,7 +1234,6 @@ def test_13_docker_argv_is_hardened_and_image_pinned_by_digest() -> None:
     assert "@sha256:" in base
 
 
-@pytest.mark.xfail(strict=True, reason="P0 §4.14, retired by D5: CLI default is still local")
 def test_14_cli_defaults_to_docker() -> None:
     from aigis.cli import _build_parser
 
@@ -1242,7 +1241,6 @@ def test_14_cli_defaults_to_docker() -> None:
     assert args.sandbox == "docker"
 
 
-@pytest.mark.xfail(strict=True, reason="P0 §4.14, retired by D5: no --unsafe-local flag")
 def test_14_cli_local_requires_unsafe_local_flag() -> None:
     from aigis.cli import _build_parser
 
@@ -1254,13 +1252,17 @@ def test_14_cli_local_requires_unsafe_local_flag() -> None:
     assert args.unsafe_local is True
 
 
-@pytest.mark.xfail(strict=True, reason="P0 §4.14, retired by D5: environment.json has no isolation")
 def test_14_local_run_records_isolation_none(tmp_path: Path) -> None:
-    _, _, evidence = _run(tmp_path, [_fix_subtract()])
+    _, decision, evidence = _run(tmp_path, [_fix_subtract()])
     environment = json.loads(
         (Path(evidence.bundle_path) / "environment.json").read_text(encoding="utf-8")
     )
     assert environment["isolation"] == "none"
+    # ... and the verdict says so itself, whatever it is (here a PASS)
+    assert decision.final == FinalDecision.PASS
+    assert "isolation: none" in decision.reason
+    on_disk = json.loads((Path(evidence.bundle_path) / "decision.json").read_text("utf-8"))
+    assert "isolation: none" in on_disk["reason"]
 
 
 def _git_init_and_commit(repo: Path) -> str:
@@ -1274,10 +1276,17 @@ def _git_init_and_commit(repo: Path) -> str:
     return out.stdout.strip()
 
 
+_OFFLINE_IMAGE_ID = "sha256:" + "f" * 64
+
+
 class _OfflineDockerSandbox(DockerSandbox):
     """A DockerSandbox (image metadata included) that executes locally, so
     test 15 needs no daemon: it checks what the orchestrator records.
     """
+
+    def verify_image(self) -> str:
+        self.image_id = _OFFLINE_IMAGE_ID
+        return self.image_id
 
     def run_command(
         self, executable: str, args: list[str], *, timeout_seconds: int, report_dir=None
@@ -1287,10 +1296,6 @@ class _OfflineDockerSandbox(DockerSandbox):
         )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="P0 §4.15, retired by D5: environment.json leaves digest/policy/git_commit null",
-)
 def test_15_environment_json_has_reproducibility_fields(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path / "repo")
     head = _git_init_and_commit(repo)
@@ -1307,9 +1312,60 @@ def test_15_environment_json_has_reproducibility_fields(tmp_path: Path) -> None:
     environment = json.loads(
         (Path(evidence.bundle_path) / "environment.json").read_text(encoding="utf-8")
     )
-    assert environment["sandbox_image_digest"]
-    assert environment["policy_version"]
-    assert environment["git_commit"] == head
+    # git_commit renamed to task_repo_commit in D5: it is the repo under
+    # test's HEAD, kept apart from the AIGIS checkout's own (aigis_commit).
+    assert environment["task_repo_commit"] == head
+    assert "git_commit" not in environment
+    assert environment["isolation"] == "docker"
+    assert environment["sandbox_image"] == "aigis-sandbox:local"
+    assert environment["sandbox_image_digest"] == _OFFLINE_IMAGE_ID
+    assert environment["policy_version"] == PolicyEngine(_contract()).policy_version
+    assert environment["python_version"]
+    from aigis.provenance import aigis_commit
+
+    assert environment["aigis_commit"] == aigis_commit()
+
+
+def test_15_task_repo_commit_is_null_inside_another_repo(tmp_path: Path) -> None:
+    """examples/tasks/T01/repo lives inside the AIGIS repo: git rev-parse
+    there would return AIGIS's commit. Only a git root counts."""
+    from aigis.provenance import git_commit_of
+
+    outer = _write_repo(tmp_path / "outer")
+    _git_init_and_commit(outer)
+    inner = outer / "src"
+    assert git_commit_of(outer) is not None
+    assert git_commit_of(inner) is None
+    assert git_commit_of(tmp_path / "not-a-repo-at-all") is None
+
+
+def test_d5_baseline_runs_in_the_same_isolation_as_the_agent(
+    docker_ready: None, tmp_path: Path
+) -> None:
+    """Note 10: in docker mode, PytestGate's baseline also runs in a
+    container (on its own clean sandbox), not on the host."""
+    created: list[DockerSandbox] = []
+
+    class _Recording(DockerSandbox):
+        def __init__(self, repo) -> None:
+            super().__init__(repo)
+            self.commands: list[str] = []
+            created.append(self)
+
+        def run_command(self, executable, args, *, timeout_seconds, report_dir=None):
+            self.commands.append(executable)
+            return super().run_command(
+                executable, args, timeout_seconds=timeout_seconds, report_dir=report_dir
+            )
+
+    _, decision, _ = _run(
+        tmp_path, [_fix_subtract()], sandbox_factory=_Recording, gates=(PytestGate(),)
+    )
+    agent, baseline = created[0], created[1]
+    assert baseline.commands == ["pytest"]  # the baseline run, in a container
+    assert baseline.image_id is not None
+    assert agent.commands == ["pytest"]  # the gate
+    assert decision.final == FinalDecision.PASS, decision.reason
 
 
 # --- Escalation (D6, P1) --------------------------------------------------------

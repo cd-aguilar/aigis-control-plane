@@ -38,7 +38,22 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("contract", type=Path, help="path to a TaskContract JSON file")
     run.add_argument("repo", type=Path, help="path to the repo the agent will work on")
-    run.add_argument("--sandbox", choices=["local", "docker"], default="local")
+    # P0 D5: docker is the only sandbox you choose by name. The local copy
+    # (no isolation of the host or the network) needs the explicit flag
+    # below and is recorded as isolation "none" in environment.json and in
+    # the decision's reason.
+    run.add_argument(
+        "--sandbox",
+        choices=["docker"],
+        default="docker",
+        help="isolated container sandbox (default; needs `make sandbox-image`)",
+    )
+    run.add_argument(
+        "--unsafe-local",
+        action="store_true",
+        help="UNSAFE: run in a local copy of the repo with NO isolation -- the agent's "
+        "code sees the host filesystem and the network. Recorded as isolation 'none'.",
+    )
     run.add_argument("--evidence-dir", type=Path, default=Path("evidence"))
     run.add_argument(
         "--model", default=None, help="override the Claude model (else AIGIS_CLAUDE_MODEL)"
@@ -53,7 +68,15 @@ def _build_parser() -> argparse.ArgumentParser:
 def _run(args: argparse.Namespace) -> int:
     contract = TaskContract.model_validate_json(args.contract.read_text(encoding="utf-8"))
     provider = ClaudeProvider(model=args.model)
-    sandbox_factory = DockerSandbox if args.sandbox == "docker" else LocalCowSandbox
+    if args.unsafe_local:
+        print(
+            "aigis: WARNING --unsafe-local: no sandbox isolation; the agent's code can read "
+            "the host filesystem and use the network (recorded as isolation 'none')",
+            file=sys.stderr,
+        )
+        sandbox_factory = LocalCowSandbox
+    else:
+        sandbox_factory = DockerSandbox
 
     _, decision, evidence = run_task(
         contract,
