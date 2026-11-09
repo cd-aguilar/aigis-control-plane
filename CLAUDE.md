@@ -234,10 +234,14 @@ diferidos y rechazados, discutidos con Dario en sesión de Cowork:
 - [x] Documentación técnica desglosada: `docs/THREAT-MODEL.md`,
       `docs/SECURITY.md`, `docs/EVALUATION.md` separados de
       `ARCHITECTURE.md` (29 ago 2026)
-- [ ] Segunda pasada del benchmark (N>1 por tarea): correr T06 y T08
-      en vivo (siguen en N=1; T06 es el outlier de la sección 19) —
-      necesita la API key real de Dario, se corre desde su propia
-      terminal, no desde Cowork. `scripts/aggregate_metrics.py --all
-      --per-task` ya está listo para leer el resultado agrupado.
+- [x] ~~Segunda pasada del benchmark (N>1 por tarea)~~ — cancelada por
+      Dario el 22/9: el benchmark se re-corre completo después del fix
+      del P0 (commit 10).
+- [ ] **P0 de seguridad (abierto desde el 22/9, bloquea todo lo demás):**
+      bypass de scope vía `run_command`. Diseño en
+      `docs/security/P0-design.md`, estado y criterios en `STATUS.md`.
+      Hechos: tests de regresión (xfail strict), recorte de claims, CI
+      mínima, D4 (`d9933bc`) y D2 (`1ac97c0`). Faltan D3 → D1 → D5 →
+      D6 → re-correr el benchmark. Van 4/9 criterios de cierre.
 - [ ] Fase 7 (Production Hardening) — explícitamente fuera del alcance
       inicial, no empezar sin decisión explícita

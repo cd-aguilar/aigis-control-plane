@@ -1,6 +1,16 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 8 nov 2026 — P0 de seguridad sigue abierto (bypass de scope vía `run_command`, ver sección dedicada). En esta fecha: docs originales del P0 commiteados en `docs/security/`, checklist reemplazado por los 9 criterios del §8, CI mínima creada (`43b1456`, primer run pendiente del push), fix de portabilidad Linux previo al CI (`838e7bd`) y rotación de credenciales confirmada. Anterior: 22 sep 2026._
+_Última actualización: 9 nov 2026 — P0 de seguridad sigue abierto (bypass de scope vía `run_command`, ver sección dedicada), **4 de 9 criterios de cierre cumplidos** (2, 4, 7, 9). Hechos: D4 (`d9933bc`) y D2 (`1ac97c0`). Siguiente: D3 (commit 6). `cc74e83` y `1ac97c0` pendientes del CI #3. Re-verificado el 9/11 en Windows: 257 passed, 36 xfailed, 6 skipped, ruff limpio. Anterior: 8 nov 2026._
+
+### Qué sigue (orden del plan, numeración de `next-tasks`)
+
+1. **Push** de `cc74e83` + `1ac97c0` y mirar el CI #3 (lo hace Dario).
+2. ~~Decisión de Dario antes de D3~~ — **resuelta el 9/11: opción (b)**. `test_run_command_cannot_leak_a_forbidden_path` se retira en D1 (ver "Pendiente de Dario").
+3. **Commit 6 — D3:** `protected_paths` en `TaskContract` (validador para que no se solape con `allowed_paths`), workspace de evaluación (base + cambios del agente fuera de los protegidos), reporte del gate fuera del workspace, y gate que no corre → `NEEDS_HUMAN gate_infrastructure_error`. Saca de xfail los tests 10-12 y S07. Cubre el criterio 5.
+4. **Commit 7 — D1:** `run_tests`/`run_lint` en lugar de `run_command`, con la allowlist genérica vacía. Saca de xfail los tests 1-3 y S06, y también los 2 xfail que quedan en `test_executor.py`. Cubre el criterio 3.
+5. **Commit 8 — D5:** imagen propia por digest, docker por defecto, `--unsafe-local`, y resolver el bug Docker/UID. Saca de xfail los tests 13-15. Cubre los criterios 1 y 6.
+6. **Commit 9 — D6** (P1, test 16). **Commit 10:** re-correr el benchmark después del fix (lo corre Dario con su key). Cubre el criterio 8.
+7. Al cierre: volver a correr el grep del criterio 7 y marcar el P0 como cerrado.
 
 Este documento resume el estado real de arquitectura, código y repo para que cualquier sesión o IA (Cowork, Claude Code, ChatGPT, Gemini, o vos) arranque con contexto completo sin tener que re-derivarlo. Subilo al knowledge del Project "Aigis Control Plane" en claude.ai o pegalo directo en el chat de otra IA para consulta cruzada. Para el detalle técnico completo de cada pieza, `docs/ARCHITECTURE.md`; para el historial fase por fase, `CLAUDE.md`.
 
@@ -201,13 +211,13 @@ Hash: `d9933bc`. **CI #2 verde** sobre `d9933bc` (26 s, runner Linux real).
 - Tests: se retiran los xfail de §4 tests 5, 6, 7, 8 y S08 (7 casos). Ninguno más empezó a pasar. Nuevos: test 7 con un segundo caso (symlink que **reemplaza** un archivo existente), cambio de tipo archivo→directorio, `test_08_tool_log_cannot_widen_observed_scope` (criterio 4) y el control punta a punta **T01 real** (`patch_file` + `run_command pytest tests/`, gates pytest y ruff reales) → PASS, `changed-paths.json == ["src/calculator.py"]`, sin `untracked_modification`.
 - **Hallazgo propio (8/11), cerrado en este commit: fuga de contenido del host hacia el Evidence Bundle.** Reproducido en Linux antes del fix: si un symlink **reemplaza un archivo de texto que existía en la base** y apunta a un archivo del host, `collect_diff` seguía el link y copiaba el contenido del host a `diff.patch` como líneas `+`. Un symlink **nuevo** no filtraba contenido (se renderizaba como binario), pero igual se leían los bytes del destino. Ahora el diff dice `Symlink change <path>: file => symlink -> <destino>` y nunca abre el destino.
 - Sigue xfail y no lo toca D4: `tests/policy/test_executor.py::test_run_command_write_is_reported_as_a_changed_path` (pide que el executor setee `changed_path` en un `run_command`; D4 lo resuelve observando el filesystem, no en el executor). **Decisión de Dario (8/11): se retira en D1**, cuando `run_command` salga del agente, sin reescribirlo. Marcar el cambio en el executor es la capa equivocada (la verdad sale del filesystem) y la propiedad ya la cubren los tests 5 y 6 de `tests/test_p0_regressions.py`. Al retirarlo queda una nota apuntando a esos dos tests.
-Tests: Windows 251 passed, 39 xfailed, 4 skipped (los 2 casos de symlink se saltean en Windows); Linux (contenedor) 254 passed, 39 xfailed, 1 skipped | ruff: clean | CI: pendiente del push.
+Tests: Windows 251 passed, 39 xfailed, 4 skipped (los 2 casos de symlink se saltean en Windows); Linux (contenedor) 254 passed, 39 xfailed, 1 skipped | ruff: clean | CI: #2 verde (ver arriba).
 
 **chore: anchor the evidence/ ignore pattern to the repo root (8 nov 2026)**
 Hash: `cc74e83`. `.gitignore`: `evidence/` → `/evidence/`. El patrón sin ancla también matcheaba `src/aigis/evidence/` y `tests/evidence/` (trackeados igual, pero `git add` de esas rutas salía con código 1 y un archivo nuevo ahí habría quedado ignorado sin aviso). Iba a P1; Dario pidió hacerlo ahora, antes de D2. Verificado: `git check-ignore -v src/aigis/evidence/x.py tests/evidence/x.py` no devuelve nada (exit 1) y `git check-ignore -v evidence/run-x/` devuelve `.gitignore:16:/evidence/`. Tests: sin cambios de código | ruff: clean | CI: pendiente del push.
 
 **Commit 5 — feat(sandbox): exclude forbidden_paths from workspace (D2) (8 nov 2026)**
-Hash: se anota en el commit siguiente.
+Hash: `1ac97c0`.
 - `LocalCowSandbox.create(exclude=...)` (y en el protocolo `Sandbox`): las rutas de `forbidden_paths` no se copian. Misma regla de prefijos que el Policy Engine (`policy.engine.path_matches_prefix`, nombre público del `_matches_prefix` que ya usaba `path_within_scope`): `config/` excluye todo el subárbol, una entrada exacta excluye solo ese archivo.
 - Symlinks del repo base (se copian como links, `symlinks=True`, desde D4): además se **excluyen** los links absolutos (`symlink_absolute`), los que resuelven fuera del repo (`symlink_outside_repo`) y los que resuelven dentro de una ruta excluida (`symlink_to_forbidden`). Un link absoluto se excluye aunque apunte dentro del repo base: en el workspace seguiría apuntando al repo real del host, con los prohibidos adentro. Los links relativos que quedan dentro del repo se conservan (control en el test).
 - Cada exclusión queda en `sandbox.excluded_paths` (ruta + motivo) y en el artefacto nuevo **`excluded-paths.json`** del Evidence Bundle (incluido en `manifest.json`/`hashes.json`).
@@ -216,14 +226,14 @@ Hash: se anota en el commit siguiente.
 - `DockerSandbox` hereda `create()`: el test 4 en docker pasó sin cambios.
 - Tests: salen de xfail el test 4 (local y docker) y **el PoC** (criterio 2). Nuevos: subárbol completo + entrada exacta (`secrets/` y `notes.txt`), una entrada por raíz excluida, un excluido no aparece como baja, el agente escribiendo en una ruta prohibida sigue visible, symlinks de la base a un prohibido / a un archivo del host (absoluto y relativo) excluidos y reportados con un link relativo legítimo conservado (local y docker), y el control punta a punta **T05 real** (`patch_file` en `src/`, gates pytest y ruff reales) → PASS, `changed-paths.json == ["src/accounts.py"]`, `excluded-paths.json == [{"path": "config", "reason": "forbidden_path"}]`, el decoy no aparece en `diff.patch`.
 - Siguen xfail: **S06**, que ahora falla solo porque el `run_command` sigue dando ALLOW (el archivo ya no existe y no hay fuga); se cierra con D1. **`tests/policy/test_executor.py::test_run_command_cannot_leak_a_forbidden_path`**, que arma el sandbox con `create()` sin `exclude` y por eso sigue filtrando: **para decidir con Dario** (ver Pendiente).
-Tests: Windows 257 passed, 36 xfailed, 6 skipped (los casos de symlink se saltean en Windows); Linux (contenedor) 262 passed, 36 xfailed, 1 skipped | ruff: clean | CI: pendiente del push.
+Tests: Windows 257 passed, 36 xfailed, 6 skipped (los casos de symlink se saltean en Windows; re-verificado el 9/11); Linux (contenedor) 262 passed, 36 xfailed, 1 skipped | ruff: clean | CI: pendiente del push (junto con `cc74e83`).
 
 **Pendiente de Dario:**
 - ~~Los dos documentos del P0~~ — **commiteados el 8 nov 2026** como `docs/security/P0-design.md` (diseño aprobado, tests §4, claims §7, criterios §8) y `docs/security/P0-review.md` (hallazgos H1-H11, clasificación de controles, PoC). El checklist de arriba pasa a reemplazarse por los 9 criterios del §8 en el commit siguiente.
 - ~~La salida del `grep` sobre los bundles locales~~ — resuelto el 8/11: 15 corridas, 15× `pytest tests/` y 15× `ruff check .`, todas tool calls del agente (contar solo `tool_request`; cada línea repite el request en `policy_decision.request`). Nunca apareció `python`. `run_tests`/`run_lint` cubren el 100% del uso observado en esta máquina.
 - ~~`git push origin main` y mirar el primer run de CI~~ — hecho el 8/11, verde (ver arriba).
 - Al llegar a D5: elegir opción para el bug Docker/UID (ver P1 arriba).
-- `tests/policy/test_executor.py::test_run_command_cannot_leak_a_forbidden_path` (xfail): arma el sandbox con `create()` sin `exclude`, así que D2 no lo cubre. Opciones: (a) pasarle `exclude=contract.forbidden_paths` como hace `run_task` y retirarlo ahora; (b) retirarlo en D1 junto con el de `changed_path`, con una nota que apunte al test 4 y a S06.
+- ~~`tests/policy/test_executor.py::test_run_command_cannot_leak_a_forbidden_path` (xfail)~~ — **decidido por Dario el 9/11: opción (b).** Se retira en D1 junto con el de `changed_path`, con una nota que apunte al test 4 y a S06. No se adapta para pasarle `exclude`: estaría probando `create()`, que ya cubre el test 4.
 - ~~Confirmación de la rotación de credenciales~~ — **confirmada por Dario el 8 nov 2026** (Anthropic 27/8 e Infisical 1/8), ver "Incidente de seguridad" más abajo.
 
 ## Pendiente
