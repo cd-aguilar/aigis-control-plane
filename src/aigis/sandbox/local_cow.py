@@ -22,6 +22,7 @@ from __future__ import annotations
 import difflib
 import os
 import shutil
+import signal
 import stat
 import subprocess
 import tempfile
@@ -175,31 +176,41 @@ class LocalCowSandbox:
     ) -> CommandResult:
         env = {name: os.environ[name] for name in _ALLOWED_ENV_VARS if name in os.environ}
         argv = expand_report_dir(args, str(report_dir) if report_dir is not None else None)
+        posix = os.name == "posix"
         try:
-            completed = subprocess.run(  # noqa: S603 -- argv list, never shell=True
+            # POSIX: the command leads its own session/process group, so a
+            # timeout can kill every descendant (os.killpg), not only the
+            # direct child. With subprocess.run, a timeout killed only the
+            # child: any grandchild kept running, orphaned, in the workdir.
+            # Reading the pipes after the kill is bounded too
+            # (_drain_after_kill), so a descendant that escaped the group
+            # and still holds them cannot hang the call.
+            proc = subprocess.Popen(  # noqa: S603 -- argv list, never shell=True
                 [executable, *argv],
                 cwd=self.workdir,
                 env=env,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=timeout_seconds,
-                preexec_fn=_apply_resource_limits if os.name == "posix" else None,
-            )
-        except subprocess.TimeoutExpired as exc:
-            return CommandResult(
-                exit_code=-1,
-                stdout=exc.stdout or "",
-                stderr=(exc.stderr or "")
-                + f"\n[aigis] command exceeded {timeout_seconds}s timeout",
-                timed_out=True,
+                preexec_fn=_apply_resource_limits if posix else None,
+                start_new_session=posix,
             )
         except FileNotFoundError:
             return CommandResult(
                 exit_code=127, stdout="", stderr=f"executable not found: {executable}"
             )
-        return CommandResult(
-            exit_code=completed.returncode, stdout=completed.stdout, stderr=completed.stderr
-        )
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            _kill_process_tree(proc)
+            stdout, stderr = _drain_after_kill(proc)
+            return CommandResult(
+                exit_code=-1,
+                stdout=stdout,
+                stderr=stderr + f"\n[aigis] command exceeded {timeout_seconds}s timeout",
+                timed_out=True,
+            )
+        return CommandResult(exit_code=proc.returncode, stdout=stdout, stderr=stderr)
 
     def _changes(self) -> list[_Change]:
         if self.evaluating:
@@ -306,6 +317,37 @@ def _make_parent_dirs(target: Path, root: Path) -> None:
         if current.is_symlink() or (current.exists() and not current.is_dir()):
             current.unlink()
         current.mkdir(exist_ok=True)
+
+
+# After the kill, how long to wait for the pipes to reach EOF. Only a
+# descendant that left the process group (its own setsid()) can still hold
+# them; past this, the output read so far is dropped rather than hanging.
+_DRAIN_AFTER_KILL_SECONDS = 5
+
+
+def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
+    """SIGKILL the command's whole process group on POSIX (it was started
+    with ``start_new_session=True``, so its pgid is its pid); on Windows,
+    only the direct child -- there is no process group to target here."""
+    if os.name == "posix":
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass  # the whole group already exited
+    else:
+        proc.kill()
+
+
+def _drain_after_kill(proc: subprocess.Popen[str]) -> tuple[str, str]:
+    try:
+        stdout, stderr = proc.communicate(timeout=_DRAIN_AFTER_KILL_SECONDS)
+    except subprocess.TimeoutExpired:
+        for pipe in (proc.stdout, proc.stderr):
+            if pipe is not None:
+                pipe.close()
+        proc.wait()
+        return "", "[aigis] output dropped: a process outside the killed group kept the pipes open"
+    return stdout or "", stderr or ""
 
 
 def _apply_resource_limits() -> None:

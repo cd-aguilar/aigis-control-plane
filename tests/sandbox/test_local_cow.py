@@ -1,4 +1,6 @@
+import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -168,6 +170,53 @@ def test_run_command_allows_multithreaded_tools_under_posix_limits(base_repo: Pa
         assert "ok" in result.stdout
     finally:
         sandbox.destroy()
+
+
+_GRANDCHILD_SCRIPT = """
+import subprocess, sys, time
+grandchild = subprocess.Popen(
+    [sys.executable, "-c", "import time; time.sleep(60)"]
+)  # inherits stdout/stderr: the pipes stay open while it lives
+print(grandchild.pid, flush=True)
+time.sleep(60)
+"""
+
+
+def _alive(pid: int) -> bool:
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except FileNotFoundError:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        return True  # no /proc (macOS): exists, can't tell a zombie apart
+    return stat.rsplit(")", 1)[1].split()[0] != "Z"  # a zombie is dead
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups only")
+def test_run_command_timeout_kills_grandchildren_and_does_not_hang(base_repo: Path) -> None:
+    """Commit 14: with subprocess.run, a timeout killed only the direct
+    child; the grandchild (60 s sleep, holding the inherited pipes) survived
+    as an orphan. Now the whole process group is killed: the grandchild is
+    gone, and reading the pipes after the kill does not wait for it (the
+    call returns shortly after the timeout). Mutation check: with the old
+    subprocess.run code this test fails on "survived the timeout"."""
+    sandbox = LocalCowSandbox(base_repo)
+    sandbox.create()
+    try:
+        started = time.monotonic()
+        result = sandbox.run_command(sys.executable, ["-c", _GRANDCHILD_SCRIPT], timeout_seconds=2)
+        elapsed = time.monotonic() - started
+    finally:
+        sandbox.destroy()
+    assert result.timed_out and result.exit_code == -1
+    assert elapsed < 15, f"run_command hung {elapsed:.1f}s past a 2s timeout"
+    grandchild_pid = int(result.stdout.split()[0])
+    deadline = time.monotonic() + 5
+    while _alive(grandchild_pid) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert not _alive(grandchild_pid), f"grandchild {grandchild_pid} survived the timeout"
 
 
 def test_create_twice_raises() -> None:
