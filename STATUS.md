@@ -1,6 +1,6 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 9 nov 2026 — **P0 de seguridad CERRADO** (abierto el 22 sep 2026): los 9 criterios de cierre se cumplen con evidencia (ver "P0 CERRADO" más abajo). Fix en D1-D6, benchmark post-fix 24/24 PASS en docker sobre `8aad58d`. Commits de cierre: `26eff23` (resultados) y commit 11 (cierre en los docs), sin pushear. Siguiente: los P1 de "Trabajo siguiente". Tests en Windows con Docker Desktop: 441 passed, 8 skipped, 0 xfailed; ruff limpio. Anterior: 9 nov 2026, antes del cierre._
+_Última actualización: 14 nov 2026 — **post-P0, fase A (higiene), apuntando a `v0.1.1`.** El P0 de seguridad está CERRADO (9 nov 2026; ver "P0 CERRADO" más abajo): commit 11 (`34b0de9`, cierre en los docs) **pusheado, CI #11 verde, taggeado `v0.1.0`**. Fase A: commits 12 (CI: actions por SHA sobre Node 24 + runner `ubuntu-24.04`), 13 (`pip --require-hashes` en la imagen del sandbox: **hay que reconstruir la imagen**, ver su entrada), 14 (kill del grupo de procesos en el timeout de `LocalCowSandbox`) y 15 (este documento), sin pushear. Siguiente: fase B (ver "Trabajo siguiente"). Tests en Windows con Docker Desktop: 443 passed, 9 skipped, 0 xfailed; ruff limpio. Anterior: 9 nov 2026, cierre del P0._
 
 ### Qué sigue (orden del plan, numeración de `next-tasks`)
 
@@ -20,7 +20,9 @@ _Última actualización: 9 nov 2026 — **P0 de seguridad CERRADO** (abierto el 
    ~~**9b**~~ — `8aad58d` (bug del harness que encontró la primera pasada del benchmark: T07 sin PyYAML).
    ~~**Commit 10**~~ — `26eff23`: benchmark post-fix 24/24 PASS en docker sobre `8aad58d`, publicado con los fallos de la primera pasada. Cubre el criterio 8.
 7. ~~Al cierre: grep del criterio 7 y P0 marcado como cerrado~~ — **commit 11, 9 nov 2026. P0 CERRADO.**
-8. **Siguiente:** los P1 de "Trabajo siguiente (post-P0)", en el orden que decida Dario.
+8. ~~Push de commit 11 + tag~~ — **CI #11 verde sobre `34b0de9`, taggeado `v0.1.0`** (9/11).
+9. **Fase A post-P0 (higiene, hacia `v0.1.1`)** — commits 12-15, hechos el 14/11, sin pushear (los pushea Dario uno por uno). Al pushear el 12: confirmar que el run ya no muestra el aviso de Node 20.
+10. **Siguiente: fase B** — los pendientes de "Trabajo siguiente (post-P0)", en el orden que decida Dario.
 
 Este documento resume el estado real de arquitectura, código y repo para que cualquier sesión o IA (Cowork, Claude Code, ChatGPT, Gemini, o vos) arranque con contexto completo sin tener que re-derivarlo. Subilo al knowledge del Project "Aigis Control Plane" en claude.ai o pegalo directo en el chat de otra IA para consulta cruzada. Para el detalle técnico completo de cada pieza, `docs/ARCHITECTURE.md`; para el historial fase por fase, `CLAUDE.md`.
 
@@ -185,15 +187,20 @@ OWASP ASI01/02/05 y AARM se re-evaluaron al cierre y no subió ninguno: dependen
 D6 (`deny_escalation=security`, test 16) es P1 en el diseño y **no** es criterio de cierre — hecho en el commit 9. Los criterios 1-7 son verificables por CI.
 
 **Trabajo siguiente (post-P0) — P1 anotados durante el P0:**
-- **`baseline_unusable` en tareas del tipo "implementá X"** (9b): si los tests de una tarea futura importan una función que todavía no existe, la base no colecta y el resultado es NEEDS_HUMAN en vez de calificar al agente. Hoy no afecta a ninguna de las 8 tareas (verificado). Opciones: distinguir un `ImportError` de un símbolo que la tarea pide implementar, o exigir que las tareas declaren sus tests como colectables (stub de la función en la base).
-- **Tests ocultos** para el límite residual del grader (monkeypatch de `_pytest` desde el código del agente): tests que el agente no ve, o un proceso calificador separado del código calificado.
-- **`run_tests`: marcar un error de colección como "preexistente en el repo base"** (opcional del 9b): necesita la línea base en el executor.
-- **`pip --require-hashes` en `sandbox/Dockerfile`** (revisión del 8a, Dario 9/11): pasar las versiones a un `sandbox/requirements.txt` con hashes e instalar con `--require-hashes`, para que la imagen no dependa de que PyPI sirva el mismo artefacto para esa versión. El test de paridad con `pyproject.toml` tendría que leer ese archivo.
-- **Regla 4 del 6c (Dario, 9/11):** hoy `RuffGate` corre `--ignore-noqa` sobre todo archivo que tocó el agente, así que un `noqa` que ya estaba en la base en ese archivo también deja de silenciar. Refinarlo para rechazar solo los `noqa` que **agregó** el agente, comparando contra la base. Aceptado como está por ahora: ninguna tarea del benchmark tiene `noqa`, `xfail` ni `skip`.
-- `LocalCowSandbox.run_command` sin `start_new_session=True`: ante un timeout mueren solo los hijos directos; los nietos sobreviven y pueden colgar `communicate()` si heredaron los pipes. Fix: `start_new_session=True` + `os.killpg` en el timeout, con test.
-- CI: fijar `actions/checkout` y `actions/setup-python` por commit SHA (hoy por tag).
-- **Anotaciones del primer run de CI (#1, `eeea5ec`, 8/11):** `actions/checkout@v4` y `actions/setup-python@v5` corren sobre Node 20 (deprecado, GitHub ya las fuerza a Node 24) → subirlas a versiones con Node 24 **y** fijarlas por SHA en un mismo commit (junta este punto con el de arriba).
-- `ubuntu-latest` migra a Ubuntu 26 desde el 19/10/2026 → fijar la versión del runner (p. ej. `ubuntu-24.04`) para que el entorno de CI sea reproducible.
+
+_Reordenado el 14/11: lo que resolvió la fase A queda tachado abajo; lo pendiente es la fase B, en este orden._
+
+**Fase B — pendiente, en orden:**
+1. **Grader aislado / tests ocultos** — el límite residual del grader (monkeypatch de `_pytest` desde el código del agente): tests que el agente no ve, o un proceso calificador separado del código calificado. Es lo que tiene ASI01/02/05 en 🟡.
+2. **`baseline_unusable` en tareas del tipo "implementá X"** (9b): si los tests de una tarea futura importan una función que todavía no existe, la base no colecta y el resultado es NEEDS_HUMAN en vez de calificar al agente. Hoy no afecta a ninguna de las 8 tareas (verificado). Opciones: distinguir un `ImportError` de un símbolo que la tarea pide implementar, o exigir que las tareas declaren sus tests como colectables (stub de la función en la base).
+3. **`run_tests`: marcar un error de colección como "preexistente en el repo base"** (opcional del 9b): necesita la línea base en el executor.
+4. **Regla 4 del 6c (Dario, 9/11):** hoy `RuffGate` corre `--ignore-noqa` sobre todo archivo que tocó el agente, así que un `noqa` que ya estaba en la base en ese archivo también deja de silenciar. Refinarlo para rechazar solo los `noqa` que **agregó** el agente, comparando contra la base. Aceptado como está por ahora: ninguna tarea del benchmark tiene `noqa`, `xfail` ni `skip`.
+
+**Resuelto en la fase A (14/11):**
+- ~~`pip --require-hashes` en `sandbox/Dockerfile`~~ — **commit 13**: `sandbox/requirements.txt` con versiones exactas + hashes (transitivos incluidos), instalado con `--require-hashes`; el test de paridad lee ese archivo. El image ID cambió: reconstruir la imagen en cada máquina.
+- ~~`LocalCowSandbox.run_command` sin `start_new_session=True`~~ — **commit 14**: `start_new_session=True` + `os.killpg` en el timeout (POSIX), con test y mutation check. Corrección: en POSIX los nietos no colgaban `communicate()` (`subprocess.run` hace `wait()` tras el kill); el defecto era el nieto huérfano que seguía vivo.
+- ~~CI: fijar `actions/checkout` y `actions/setup-python` por commit SHA~~ + ~~subirlas a Node 24~~ (anotación del run #1) — **commit 12**: `checkout` v7.0.1 y `setup-python` v7.1.0, por SHA verificado con `gh api`, ambas `using: node24`.
+- ~~`ubuntu-latest` migra a Ubuntu 26~~ — **commit 12**: `runs-on: ubuntu-24.04`.
 - ~~`pyproject.toml`: `ruff>=0.6` sin fijar~~ — resuelto en el 8a: el extra `dev` fija `pytest==9.1.1`, `pytest-json-report==1.5.0` y `ruff==0.16.4`, las mismas versiones que la imagen del sandbox.
 - ~~**Bug Docker/UID**~~ — resuelto en el 8a con la opción (a), que eligió Dario: `uid:gid` del host, con fallback a 1000 si es root, más tests que leen el workspace. La verificación en Linux nativo depende del CI del 8a. Texto original: **Bug Docker/UID (hallazgo para D5, commit 8):** `DockerSandbox` corre con `--user 1000:1000`; en Linux nativo, si el dueño del workspace tiene otro uid, dentro del contenedor no se puede leer nada del workspace (`listdir`/`open` → Permission denied; reproducido con volumen nombrado en Docker Desktop), así que los gates fallarían en docker. `test_run_command_executes_inside_container` no lo detecta porque solo hace un `print`. Opciones para Dario al llegar a D5: (a) `--user {os.getuid()}:{os.getgid()}` si el host no es root, fallback a 1000 si es root, + un test que lea el workspace; (b) xfail con motivo. Sin verificar: modo 0700 de `tmp_path`, `copystat` de `copytree`, runner real de GitHub.
 
@@ -537,7 +544,7 @@ Hash: `26eff23`. Benchmark corrido por Dario sobre `8aad58d`: **24/24 PASS** (8 
 - **Criterio 8 marcado** (ver arriba).
 
 **Commit 11 — docs: close P0 (9 nov 2026)**
-Hash: se anota en el commit siguiente.
+Hash: `34b0de9` (anotado en el commit 15). Pusheado por Dario: **CI #11 verde**; taggeado **`v0.1.0`**.
 - **Grep del criterio 7 re-corrido sobre todos los `.md` versionados**, incluidos `docs/security/` y `claude/`. Solo hay coincidencias calificadas:
   - "no network"/"sin red" en README, ARCHITECTURE, EVALUATION, THREAT-MODEL y SECURITY: describen el default docker, con `--unsafe-local` como excepción explícita;
   - "OverlayFS" en `CLAUDE.md:116`: dice que nunca se implementó;
@@ -550,8 +557,17 @@ Hash: se anota en el commit siguiente.
 - **Trabajo siguiente:** la lista de P1 queda como "Trabajo siguiente (post-P0)", con un ítem nuevo: `baseline_unusable` para tareas del tipo "implementá X".
 Tests: sin cambios de código (441 passed, 8 skipped en Windows con Docker Desktop, del commit anterior) | ruff: clean | CI: pendiente del push.
 
+**Commit 12 — ci: pin actions by SHA on Node 24 + pin runner (14 nov 2026)**
+Hash: `41c7c4e`. Inicio de la fase A post-P0 (higiene, hacia `v0.1.1`). Resuelve tres P1 de "Trabajo siguiente": actions por SHA, Node 20 deprecado y `ubuntu-latest`.
+- `actions/checkout@v4` → **v7.0.1** (`3d3c42e5aac5ba805825da76410c181273ba90b1`) y `actions/setup-python@v5` → **v7.1.0** (`6d4fd22b20465ccc0f7354476588e8df7c9ca0e0`), las últimas releases de cada una, fijadas por SHA con el tag en un comentario.
+- **Cómo se verificó cada SHA:** `gh api repos/actions/<repo>/git/ref/tags/<tag>`. Los dos son tags livianos que apuntan directo a un commit, coincidente con `gh api repos/actions/<repo>/commits/<tag>`. El `action.yml` de cada tag declara `using: node24`.
+- Las release notes de v6 → v7 no rompen nada de lo que se usa: `persist-credentials: false` en checkout y `python-version` + `cache: pip` en setup-python. El cambio de setup-python v7 que quita el input `pip-install` no aplica, porque no se usaba.
+- `runs-on: ubuntu-latest` → **`ubuntu-24.04`**.
+- **Criterio (sin aviso de Node 20):** se verifica en el primer run después del push. Localmente solo se pudo comprobar que el YAML parsea y que ambas actions declaran Node 24.
+Tests: 441 passed, 8 skipped (Windows con Docker Desktop; sin cambios de código) | ruff: clean | CI: pendiente del push.
+
 **Commit 13 — build(sandbox): pip --require-hashes (14 nov 2026)**
-Hash: se anota en el commit 15. Resuelve el P1 "`pip --require-hashes` en `sandbox/Dockerfile`" (revisión del 8a).
+Hash: `3d43385`. Resuelve el P1 "`pip --require-hashes` en `sandbox/Dockerfile`" (revisión del 8a).
 - **`sandbox/requirements.in`** (entrada: las 4 versiones de siempre, `pytest==9.1.1`, `pytest-json-report==1.5.0`, `ruff==0.16.4`, `pyyaml==6.0.2`) y **`sandbox/requirements.txt`** compilado con `pip-compile 7.6.2 --generate-hashes --allow-unsafe --strip-extras`, **corrido dentro de la imagen base fijada por digest** (Python 3.11, Linux), para que los markers resuelvan para el entorno donde se instala. Fija también los transitivos: `iniconfig==2.3.1`, `packaging==26.3`, `pluggy==1.7.0`, `pygments==2.21.0`, `pytest-metadata==3.1.1`. Los 9 conjuntos de hashes se cotejaron contra la API JSON de PyPI (todos los artefactos de cada versión, 1:1).
 - **Dockerfile:** `COPY requirements.txt` + `pip install --require-hashes --no-deps -r`, un solo `pip install`. Prueba negativa a mano: con los dos hashes de `iniconfig` alterados el build falla con `THESE PACKAGES DO NOT MATCH THE HASHES`. Con uno solo alterado **no** falla: pip acepta si el artefacto que baja coincide con cualquiera de los hashes listados (wheel o sdist), es el comportamiento esperado.
 - **Diferencia con la imagen anterior:** `packaging` pasa de 26.2 (lo que resolvía pip sin fijar) a 26.3. El resto, idéntico.
@@ -560,12 +576,21 @@ Hash: se anota en el commit 15. Resuelve el P1 "`pip --require-hashes` en `sandb
 Tests: 443 passed, 8 skipped (Windows con Docker Desktop, tests docker contra la imagen nueva) | ruff: clean | CI: pendiente del push.
 
 **Commit 14 — fix(sandbox): kill the whole process group on timeout (local) (14 nov 2026)**
-Hash: se anota en el commit 15. Resuelve el P1 de `LocalCowSandbox.run_command` sin `start_new_session`.
+Hash: `832c873`. Resuelve el P1 de `LocalCowSandbox.run_command` sin `start_new_session`.
 - `run_command` pasa de `subprocess.run` a `Popen` + `communicate(timeout=…)`. En POSIX el comando arranca con `start_new_session=True` (lidera su propio grupo de procesos) y, ante el timeout, `os.killpg(pid, SIGKILL)` mata a todo el grupo, nietos incluidos. En Windows sigue matando solo al hijo directo (`proc.kill()`): ahí no hay grupo al que apuntar.
 - La lectura de los pipes después del kill tiene su propio tope (`_DRAIN_AFTER_KILL_SECONDS = 5`): si un descendiente salió del grupo (su propio `setsid()`) y sigue con los pipes abiertos, se cierran y se descarta la salida en vez de colgar. Esa rama no tiene test (requiere un proceso que escape del grupo a propósito).
 - **Corrección al texto del P1:** decía que los nietos "pueden colgar `communicate()`". En POSIX no pasaba: ante un timeout, `subprocess.run` de Python 3.11 hace `kill()` + `wait()`, no un segundo `communicate()`. El defecto real era el **nieto huérfano que seguía corriendo** (en el workdir, después del timeout). En Windows `run()` sí hace `communicate()` después del kill, así que ahí el cuelgue era posible; el tope de 5 s también lo cubre.
 - Test POSIX-only `test_run_command_timeout_kills_grandchildren_and_does_not_hang`: el comando lanza un nieto (`sleep 60`, hereda los pipes) y duerme; con `timeout_seconds=2` la llamada vuelve en menos de 15 s y el nieto ya no existe (un zombie cuenta como muerto, vía `/proc/<pid>/stat`). **Mutation check** en un contenedor Linux (`python:3.11-slim` por digest): con el `local_cow.py` anterior el test falla con `grandchild … survived the timeout`; con el nuevo pasa.
 Tests: Windows 443 passed, 9 skipped (el test nuevo es POSIX-only); Linux (contenedor, sin docker adentro) 438 passed, 14 skipped | ruff: clean | CI: pendiente del push.
+
+**Commit 15 — docs: STATUS al día post-v0.1.0 (14 nov 2026)**
+Hash: se anota en el commit siguiente.
+- Encabezado: decía "commit 11 … sin pushear". Ahora dice que está pusheado (CI #11 verde) y taggeado `v0.1.0`, y resume la fase A. Hash de commit 11 anotado (`34b0de9`).
+- "Qué sigue": suma el push y tag de `v0.1.0`, la fase A (12-15) y la fase B como siguiente.
+- "Trabajo siguiente (post-P0)": tachado lo que resolvieron 12, 13 y 14. Lo pendiente queda como fase B, en orden: (1) grader aislado / tests ocultos, (2) `baseline_unusable` para "implementá X", (3) `run_tests` marcando errores de colección preexistentes, (4) regla 4 del `noqa`.
+- Entradas de los commits 12-15 con sus hashes.
+- `Makefile`: re-wrap del comentario de `sandbox-image` que el commit 13 había dejado con una línea larga. Solo el comentario.
+Tests: sin cambios de código (443 passed, 9 skipped en Windows con Docker Desktop, del commit anterior) | ruff: clean | CI: pendiente del push.
 
 **Pendiente de Dario:**
 - ~~Los dos documentos del P0~~ — **commiteados el 8 nov 2026** como `docs/security/P0-design.md` (diseño aprobado, tests §4, claims §7, criterios §8) y `docs/security/P0-review.md` (hallazgos H1-H11, clasificación de controles, PoC). El checklist de arriba pasa a reemplazarse por los 9 criterios del §8 en el commit siguiente.
@@ -577,7 +602,7 @@ Tests: Windows 443 passed, 9 skipped (el test nuevo es POSIX-only); Linux (conte
 
 ## Pendiente
 
-El alcance inicial del MVP está completo y el P0 de seguridad está **cerrado (9 nov 2026)**. Lo siguiente son los P1 de "Trabajo siguiente (post-P0)", arriba. Lo que sigue acá es lo que quedaba pendiente antes del P0 — explícitamente fuera de ese alcance o discrecional:
+El alcance inicial del MVP está completo y el P0 de seguridad está **cerrado (9 nov 2026)**. La fase A post-P0 (higiene, commits 12-15) está hecha; lo siguiente es la fase B de "Trabajo siguiente (post-P0)", arriba. Lo que sigue acá es lo que quedaba pendiente antes del P0 — explícitamente fuera de ese alcance o discrecional:
 
 1. Fase 7 (Production Hardening): explícitamente fuera del alcance inicial — no adelantar (rechazado en la revisión externa del 27/8, ver arriba).
 2. ~~Documentación técnica separada~~ — hecho el 29/8, ver hito arriba.

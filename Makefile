@@ -8,9 +8,9 @@ setup:
 	$(MAKE) --no-print-directory sandbox-image
 
 # P0 D5: builds the sandbox image (sandbox/Dockerfile: base pinned by
-# digest, grading tools pinned to the dev extra
-# and installed from sandbox/requirements.txt with --require-hashes, non-root) and records its
-# image ID in sandbox/.image-id. A local build is not reproducible byte for
+# digest, grading tools pinned to the dev extra and installed from
+# sandbox/requirements.txt with --require-hashes, non-root) and records
+# its image ID in sandbox/.image-id. A local build is not reproducible byte for
 # byte, so that ID -- not a registry digest -- is what DockerSandbox checks
 # before running anything, and what it runs.
 sandbox-image:
