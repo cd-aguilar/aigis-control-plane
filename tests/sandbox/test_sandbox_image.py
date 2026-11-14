@@ -1,6 +1,7 @@
 """The sandbox image grades with exactly the tool versions the project pins
-(P0 D5): sandbox/Dockerfile and the `dev` extra of pyproject.toml must
-agree, and the base image must be pinned by digest.
+(P0 D5): sandbox/requirements.txt (what the Dockerfile installs, with
+--require-hashes) and the `dev` extra of pyproject.toml must agree, every
+pin must carry a sha256, and the base image must be pinned by digest.
 """
 
 from __future__ import annotations
@@ -23,6 +24,14 @@ def _dockerfile() -> str:
     return (ROOT / "sandbox" / "Dockerfile").read_text(encoding="utf-8")
 
 
+def _requirements() -> str:
+    return (ROOT / "sandbox" / "requirements.txt").read_text(encoding="utf-8")
+
+
+def _image_pins() -> dict[str, str]:
+    return _pins(_requirements().splitlines())
+
+
 def _pins(lines: list[str]) -> dict[str, str]:
     pins = {}
     for line in lines:
@@ -38,11 +47,41 @@ def test_dev_extra_pins_the_grading_tools_exactly() -> None:
     assert set(_TOOLS) <= set(dev), dev
 
 
-def test_dockerfile_installs_the_same_versions_as_the_dev_extra() -> None:
+def test_requirements_install_the_same_versions_as_the_dev_extra() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     dev = _pins(project["project"]["optional-dependencies"]["dev"])
-    image = _pins(_dockerfile().splitlines())
+    image = _image_pins()
     assert {tool: image.get(tool) for tool in _TOOLS} == {tool: dev[tool] for tool in _TOOLS}
+
+
+def test_every_requirement_is_pinned_exactly_and_hashed() -> None:
+    """--require-hashes would refuse the build anyway; this fails earlier and
+    says which package is missing its pin or hash."""
+    blocks: dict[str, list[str]] = {}
+    current = None
+    for line in _requirements().splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("--hash=sha256:"):
+            assert current is not None, line
+            assert re.fullmatch(r"--hash=sha256:[0-9a-f]{64}\s*\\?", stripped), line
+            blocks[current].append(stripped)
+            continue
+        match = re.fullmatch(r"([A-Za-z0-9_.-]+)==([A-Za-z0-9_.+-]+)\s*\\?", stripped)
+        assert match, f"not an exact pin: {line!r}"
+        current = match.group(1).lower()
+        blocks[current] = []
+    assert blocks and all(blocks.values()), {name: len(h) for name, h in blocks.items()}
+
+
+def test_dockerfile_installs_requirements_with_require_hashes() -> None:
+    dockerfile = _dockerfile()
+    assert "COPY requirements.txt" in dockerfile
+    install = next(line for line in dockerfile.splitlines() if "pip install" in line)
+    assert "--require-hashes" in install and "-r /tmp/requirements.txt" in install, install
+    # no second, unhashed pip install sneaking packages in
+    assert dockerfile.count("pip install") == 1
 
 
 def test_dockerfile_base_is_pinned_by_digest_and_runs_non_root() -> None:
@@ -57,7 +96,8 @@ def test_dockerfile_base_is_pinned_by_digest_and_runs_non_root() -> None:
 
 # import name -> pip distribution, for every non-stdlib, non-local module a
 # benchmark task repo imports. Adding a task with a new dependency means
-# adding it here AND pinning it in sandbox/Dockerfile.
+# adding it here AND to sandbox/requirements.in (then regenerating
+# requirements.txt with hashes).
 _TASK_IMPORTS_TO_DIST = {"pytest": "pytest", "yaml": "pyyaml"}
 
 
@@ -90,18 +130,18 @@ def _third_party_imports(repo: Path) -> set[str]:
 def test_every_benchmark_task_import_is_installed_in_the_image() -> None:
     """T07 (`import yaml`) failed collection in docker in the post-fix
     benchmark: the image had no PyYAML. Every third-party import of every
-    examples/tasks repo must map to a pinned package in the Dockerfile."""
-    pins = _pins(_dockerfile().splitlines())
+    examples/tasks repo must map to a pinned package in sandbox/requirements.txt."""
+    pins = _image_pins()
     repos = sorted((ROOT / "examples" / "tasks").glob("*/repo"))
     assert len(repos) == 8
     for repo in repos:
         for module in sorted(_third_party_imports(repo)):
             assert module in _TASK_IMPORTS_TO_DIST, (
                 f"{repo.parent.name} imports {module!r}: map it in _TASK_IMPORTS_TO_DIST "
-                "and pin its package in sandbox/Dockerfile"
+                "and pin its package in sandbox/requirements.txt"
             )
             assert _TASK_IMPORTS_TO_DIST[module] in pins, (repo.parent.name, module)
 
 
 def test_the_t07_dependency_is_in_the_image() -> None:
-    assert _pins(_dockerfile().splitlines()).get("pyyaml") == "6.0.2"
+    assert _image_pins().get("pyyaml") == "6.0.2"

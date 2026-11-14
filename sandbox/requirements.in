@@ -1,0 +1,9 @@
+# Input for sandbox/requirements.txt (P0 D5 + commit 13). Grading tools at
+# the exact versions of the `dev` extra in pyproject.toml, plus the
+# benchmark task dependencies (tests/sandbox/test_sandbox_image.py keeps
+# both lists honest). Regenerate requirements.txt inside the pinned base
+# image -- see the header of requirements.txt.
+pytest==9.1.1
+pytest-json-report==1.5.0
+ruff==0.16.4
+pyyaml==6.0.2

@@ -2,7 +2,9 @@
 #
 # - Base pinned by digest, never by a moving tag.
 # - Grading tools pinned to the exact versions of the `dev` extra in
-#   pyproject.toml (tests/sandbox/test_sandbox_image.py keeps them equal).
+#   pyproject.toml (tests/sandbox/test_sandbox_image.py keeps them equal),
+#   installed from sandbox/requirements.txt with --require-hashes: every
+#   package, transitive ones included, pinned by version AND sha256.
 # - Non-root user. DockerSandbox passes --user anyway (host uid:gid, or
 #   1000:1000 when the host is root or has no uid, e.g. Windows).
 #
@@ -23,12 +25,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # las tareas del benchmark: the tasks' code runs in this image with no
 # network, so every non-stdlib module a task repo imports must be installed
 # here (tests/sandbox/test_sandbox_image.py checks every examples/tasks
-# import against this list).
-RUN pip install \
-        pytest==9.1.1 \
-        pytest-json-report==1.5.0 \
-        ruff==0.16.4 \
-        pyyaml==6.0.2 \
+# import against requirements.txt). --require-hashes makes pip refuse any
+# package (transitive included) whose version or sha256 is not in the file.
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --require-hashes --no-deps -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt \
     && useradd --uid 1000 --create-home --shell /usr/sbin/nologin aigis
 
 USER 1000:1000
