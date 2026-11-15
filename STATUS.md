@@ -1,6 +1,6 @@
 # aigis-control-plane — Estado del proyecto
 
-_Última actualización: 14 nov 2026 — **post-P0, fase A (higiene), apuntando a `v0.1.1`.** El P0 de seguridad está CERRADO (9 nov 2026; ver "P0 CERRADO" más abajo): commit 11 (`34b0de9`, cierre en los docs) **pusheado, CI #11 verde, taggeado `v0.1.0`**. Fase A: commits 12 (CI: actions por SHA sobre Node 24 + runner `ubuntu-24.04`), 13 (`pip --require-hashes` en la imagen del sandbox: **hay que reconstruir la imagen**, ver su entrada), 14 (kill del grupo de procesos en el timeout de `LocalCowSandbox`) y 15 (este documento), sin pushear. Siguiente: fase B (ver "Trabajo siguiente"). Tests en Windows con Docker Desktop: 443 passed, 9 skipped, 0 xfailed; ruff limpio. Anterior: 9 nov 2026, cierre del P0._
+_Última actualización: 15 nov 2026 — **v0.2.0 en curso: veredicto independiente del código calificado** (oráculo oculto, diseño en [`docs/security/v0.2-design.md`](docs/security/v0.2-design.md), decisiones de Dario del 15/11 en su §5). Cubre los puntos 1 y 2 de la fase B; los puntos 3 y 4 pasan a P1, fuera de v0.2.0. Fase A cerrada: `v0.1.1` taggeado sobre `6da2b00`, CI #12 verde (451 passed, 1 skipped; sin el aviso de Node 20). El P0 sigue CERRADO desde el 9 nov 2026 (`v0.1.0`). Anterior: 14 nov 2026, fase A._
 
 ### Qué sigue (orden del plan, numeración de `next-tasks`)
 
@@ -22,7 +22,8 @@ _Última actualización: 14 nov 2026 — **post-P0, fase A (higiene), apuntando 
 7. ~~Al cierre: grep del criterio 7 y P0 marcado como cerrado~~ — **commit 11, 9 nov 2026. P0 CERRADO.**
 8. ~~Push de commit 11 + tag~~ — **CI #11 verde sobre `34b0de9`, taggeado `v0.1.0`** (9/11).
 9. **Fase A post-P0 (higiene, hacia `v0.1.1`)** — commits 12-15, hechos el 14/11, sin pushear (los pushea Dario uno por uno). Al pushear el 12: confirmar que el run ya no muestra el aviso de Node 20.
-10. **Siguiente: fase B** — los pendientes de "Trabajo siguiente (post-P0)", en el orden que decida Dario.
+10. ~~Fase A~~ — cerrada, `v0.1.1`.
+11. **v0.2.0 en curso** — [`docs/security/v0.2-design.md`](docs/security/v0.2-design.md), §7: commit 0 (diseño) → 1 (S09-S11 + regresiones, xfail strict) → 2 (oráculos + soluciones de referencia, **Dario revisa los 8 `oracle.json` antes del commit**) → 3 (runner + comparador) → 4 (decisión, contract 3.0) → 5 (docs, benchmark 8×3, release).
 
 Este documento resume el estado real de arquitectura, código y repo para que cualquier sesión o IA (Cowork, Claude Code, ChatGPT, Gemini, o vos) arranque con contexto completo sin tener que re-derivarlo. Subilo al knowledge del Project "Aigis Control Plane" en claude.ai o pegalo directo en el chat de otra IA para consulta cruzada. Para el detalle técnico completo de cada pieza, `docs/ARCHITECTURE.md`; para el historial fase por fase, `CLAUDE.md`.
 
@@ -190,11 +191,18 @@ D6 (`deny_escalation=security`, test 16) es P1 en el diseño y **no** es criteri
 
 _Reordenado el 14/11: lo que resolvió la fase A queda tachado abajo; lo pendiente es la fase B, en este orden._
 
+**Fase B → v0.2.0 (15/11).** Dario eligió el diseño de [`docs/security/v0.2-design.md`](docs/security/v0.2-design.md): oráculo oculto con casos JSON de entrada/salida, comparador en el host (`expected` nunca entra al contenedor), `tests_pass = pytest AND oracle`, `require_oracle=true` por defecto en `contract_version` 3.0. Los puntos 1 y 2 de abajo los cubre v0.2.0; **los puntos 3 y 4 quedan fuera de v0.2.0, como P1**. Plan de commits: §7 del diseño. Criterios de cierre: §8.
+
+_Notas sobre el diseño al commitearlo (15/11):_ (a) el documento dice "Estado de partida: `main` = `34b0de9`"; al empezar la implementación `main` es `6da2b00` (`v0.1.1`, solo higiene, sin cambios de semántica); (b) la cita de §1 ("Reality Is the Final Verifier", Berkeley, arXiv 2609.12039) y la afirmación de §9 sobre proyectos pares **no están verificadas** por esta sesión: no pasarlas a README/THREAT-MODEL sin verificar, mismo criterio que con el paper LEDGER del P0.
+
 **Fase B — pendiente, en orden:**
-1. **Grader aislado / tests ocultos** — el límite residual del grader (monkeypatch de `_pytest` desde el código del agente): tests que el agente no ve, o un proceso calificador separado del código calificado. Es lo que tiene ASI01/02/05 en 🟡.
-2. **`baseline_unusable` en tareas del tipo "implementá X"** (9b): si los tests de una tarea futura importan una función que todavía no existe, la base no colecta y el resultado es NEEDS_HUMAN en vez de calificar al agente. Hoy no afecta a ninguna de las 8 tareas (verificado). Opciones: distinguir un `ImportError` de un símbolo que la tarea pide implementar, o exigir que las tareas declaren sus tests como colectables (stub de la función en la base).
-3. **`run_tests`: marcar un error de colección como "preexistente en el repo base"** (opcional del 9b): necesita la línea base en el executor.
-4. **Regla 4 del 6c (Dario, 9/11):** hoy `RuffGate` corre `--ignore-noqa` sobre todo archivo que tocó el agente, así que un `noqa` que ya estaba en la base en ese archivo también deja de silenciar. Refinarlo para rechazar solo los `noqa` que **agregó** el agente, comparando contra la base. Aceptado como está por ahora: ninguna tarea del benchmark tiene `noqa`, `xfail` ni `skip`.
+1. **Grader aislado / tests ocultos** → **v0.2.0** — el límite residual del grader (monkeypatch de `_pytest` desde el código del agente): tests que el agente no ve, o un proceso calificador separado del código calificado. Es lo que tiene ASI01/02/05 en 🟡.
+2. **`baseline_unusable` en tareas del tipo "implementá X"** → **v0.2.0** (con oráculo pasa a informativo, decisión 5 de §5) (9b): si los tests de una tarea futura importan una función que todavía no existe, la base no colecta y el resultado es NEEDS_HUMAN en vez de calificar al agente. Hoy no afecta a ninguna de las 8 tareas (verificado). Opciones: distinguir un `ImportError` de un símbolo que la tarea pide implementar, o exigir que las tareas declaren sus tests como colectables (stub de la función en la base).
+3. **P1, fuera de v0.2.0 —** **`run_tests`: marcar un error de colección como "preexistente en el repo base"** (opcional del 9b): necesita la línea base en el executor.
+4. **P1, fuera de v0.2.0 —** **Regla 4 del 6c (Dario, 9/11):** hoy `RuffGate` corre `--ignore-noqa` sobre todo archivo que tocó el agente, así que un `noqa` que ya estaba en la base en ese archivo también deja de silenciar. Refinarlo para rechazar solo los `noqa` que **agregó** el agente, comparando contra la base. Aceptado como está por ahora: ninguna tarea del benchmark tiene `noqa`, `xfail` ni `skip`.
+
+**v0.2.0 — commit 0: docs(security): v0.2 design (15 nov 2026)**
+Hash: se anota en el commit siguiente. `docs/security/v0.2-design.md` agregado tal cual lo pasó Dario (estaba en `Claude outputs/`, carpeta excluida por `.git/info/exclude`). STATUS: encabezado, fase B → v0.2.0, puntos 3 y 4 a P1. Tests: sin cambios de código | ruff: clean | CI: pendiente del push.
 
 **Resuelto en la fase A (14/11):**
 - ~~`pip --require-hashes` en `sandbox/Dockerfile`~~ — **commit 13**: `sandbox/requirements.txt` con versiones exactas + hashes (transitivos incluidos), instalado con `--require-hashes`; el test de paridad lee ese archivo. El image ID cambió: reconstruir la imagen en cada máquina.
