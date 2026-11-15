@@ -1,0 +1,50 @@
+{
+  "notes": "Non-empty lists keep their mean. The empty list is the task's only edge case and coincides with the visible test (shared, justified). Numbers compare numerically, so returning 0 for [] is as valid as 0.0.",
+  "cases": [
+    {
+      "module": "stats",
+      "function": "average",
+      "args": [
+        [
+          1,
+          2
+        ]
+      ],
+      "kwargs": {},
+      "expected": 1.5
+    },
+    {
+      "module": "stats",
+      "function": "average",
+      "args": [
+        [
+          5
+        ]
+      ],
+      "kwargs": {},
+      "expected": 5.0
+    },
+    {
+      "module": "stats",
+      "function": "average",
+      "args": [
+        [
+          -3,
+          3
+        ]
+      ],
+      "kwargs": {},
+      "expected": 0.0
+    },
+    {
+      "module": "stats",
+      "function": "average",
+      "args": [
+        []
+      ],
+      "kwargs": {},
+      "expected": 0.0,
+      "shared_with_visible": "the task is this single edge case: the only empty list is [], which the visible test already uses; special-casing it is the fix"
+    }
+  ]
+}

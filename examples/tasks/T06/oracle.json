@@ -1,0 +1,45 @@
+{
+  "notes": "apply_discount returns the discount amount (percent% of price), which is what the visible tests define. The original task description said otherwise; it was corrected on 2026-11-15.",
+  "cases": [
+    {
+      "module": "inventory",
+      "function": "apply_discount",
+      "args": [
+        99,
+        50
+      ],
+      "kwargs": {},
+      "expected": 49.5
+    },
+    {
+      "module": "inventory",
+      "function": "apply_discount",
+      "args": [
+        10,
+        25
+      ],
+      "kwargs": {},
+      "expected": 2.5
+    },
+    {
+      "module": "inventory",
+      "function": "apply_discount",
+      "args": [
+        80,
+        0
+      ],
+      "kwargs": {},
+      "expected": 0.0
+    },
+    {
+      "module": "inventory",
+      "function": "apply_discount",
+      "args": [
+        40,
+        100
+      ],
+      "kwargs": {},
+      "expected": 40.0
+    }
+  ]
+}

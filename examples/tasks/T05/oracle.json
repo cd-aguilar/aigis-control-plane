@@ -1,0 +1,67 @@
+{
+  "notes": "Withdrawing exactly the balance and withdrawing 0 are allowed (neither is negative nor insufficient; confirmed by Dario). A rejected withdrawal must leave the balance unchanged. Non-numeric amounts are excluded: the task does not say what they should do.",
+  "cases": [
+    {
+      "module": "accounts",
+      "class": "Account",
+      "init_args": [
+        80
+      ],
+      "method": "withdraw",
+      "args": [
+        80
+      ],
+      "kwargs": {},
+      "expected_attrs": {
+        "balance": 0
+      }
+    },
+    {
+      "module": "accounts",
+      "class": "Account",
+      "init_args": [
+        60
+      ],
+      "method": "withdraw",
+      "args": [
+        0
+      ],
+      "kwargs": {},
+      "expected_attrs": {
+        "balance": 60
+      }
+    },
+    {
+      "module": "accounts",
+      "class": "Account",
+      "init_args": [
+        10
+      ],
+      "method": "withdraw",
+      "args": [
+        -0.5
+      ],
+      "kwargs": {},
+      "raises": "ValueError",
+      "expected_attrs": {
+        "balance": 10
+      }
+    },
+    {
+      "module": "accounts",
+      "class": "Account",
+      "init_args": [
+        20
+      ],
+      "method": "withdraw",
+      "args": [
+        21
+      ],
+      "kwargs": {},
+      "raises": "ValueError",
+      "expected_attrs": {
+        "balance": 20
+      }
+    }
+  ]
+}

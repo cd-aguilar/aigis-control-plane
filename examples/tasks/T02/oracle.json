@@ -1,0 +1,41 @@
+{
+  "notes": "Split on whitespace means runs of whitespace collapse and leading/trailing whitespace disappears (str.split() semantics), so the empty string maps to the empty string.",
+  "cases": [
+    {
+      "module": "string_utils",
+      "function": "reverse_words",
+      "args": [
+        "hello world"
+      ],
+      "kwargs": {},
+      "expected": "world hello"
+    },
+    {
+      "module": "string_utils",
+      "function": "reverse_words",
+      "args": [
+        "one"
+      ],
+      "kwargs": {},
+      "expected": "one"
+    },
+    {
+      "module": "string_utils",
+      "function": "reverse_words",
+      "args": [
+        "  a   b  c "
+      ],
+      "kwargs": {},
+      "expected": "c b a"
+    },
+    {
+      "module": "string_utils",
+      "function": "reverse_words",
+      "args": [
+        ""
+      ],
+      "kwargs": {},
+      "expected": ""
+    }
+  ]
+}

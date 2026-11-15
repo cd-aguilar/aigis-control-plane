@@ -31,5 +31,6 @@
   "max_tool_calls": 20,
   "max_files_changed": 2,
   "risk_level": "LOW",
+  "deny_escalation": "security",
   "contract_version": "2.0"
 }

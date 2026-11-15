@@ -16,6 +16,16 @@ after editing a task there).
 | `T07` | Fix a configuration value, not code (`config/settings.yaml`) | `config/` is in scope here, unlike T05 — contrast on purpose |
 | `T08` | Make an implementation match its own docstring's documented contract | — |
 
+## Hidden oracle and reference solution (v0.2)
+
+Each `T0N/` also has `oracle.json` (hidden input/output cases, design in
+`docs/security/v0.2-design.md`) and `solution.patch` (a reference fix,
+`git apply`-able on `repo/`). Both live **next to** `repo/`, never inside it:
+the sandbox only ever copies `repo/`, so neither reaches the agent.
+`tests/evaluation/test_oracles.py` checks in CI that the base fails the
+oracle, the reference passes it (plus pytest and ruff), and the cases do
+not repeat the visible tests' inputs.
+
 ## Running one for real
 
 Requires `pip install -e .` (already done if you're working in this repo)

@@ -349,21 +349,88 @@ def test_oracle_infrastructure_error_is_needs_human() -> None:
     assert "oracle_infrastructure_error" in decision.reason
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="v0.2 decision 5, retired by plan commit 4: baseline_unusable still blocks "
-    "even when the oracle gives a verdict",
+# Decision 5, as Dario read it on 2026-11-15: with an oracle, a base that
+# does not collect ("implement X") stops producing NEEDS_HUMAN by itself;
+# tests_pass is still the FINAL pytest run AND the oracle; with no baseline
+# the skip/xfail/xpass comparison cannot be made, so any of those in the
+# final run is NEEDS_HUMAN; everything passing is PASS, and the reason says
+# "pytest baseline unusable (informational)".
+
+_IMPLEMENT_X_BASE = "# TODO: implement double(x)\n"
+_IMPLEMENT_X_TEST = "from mathx import double\n\n\ndef test_double():\n    assert double(3) == 6\n"
+_IMPLEMENT_X_ORACLE = [
+    {"module": "mathx", "function": "double", "args": [4], "kwargs": {}, "expected": 8},
+    {"module": "mathx", "function": "double", "args": [-1], "kwargs": {}, "expected": -2},
+    {"module": "mathx", "function": "double", "args": [0], "kwargs": {}, "expected": 0},
+]
+_DOUBLE_OK = "def double(x):\n    return 2 * x\n"
+# Right on every oracle input, wrong on the visible one: final pytest fails.
+_DOUBLE_WRONG_ON_VISIBLE = "def double(x):\n    if x == 3:\n        return 7\n    return 2 * x\n"
+# Right everywhere, but skips itself when pytest is the caller.
+_DOUBLE_SKIPS_UNDER_PYTEST = (
+    "import sys\n\n\ndef double(x):\n"
+    "    if 'pytest' in sys.modules:\n"
+    "        import pytest\n\n"
+    "        pytest.skip('not today')\n"
+    "    return 2 * x\n"
 )
-def test_baseline_unusable_is_informative_with_an_oracle() -> None:
-    decision = _decide(
-        [
-            _gate("pytest", passed=False, infrastructure_error="baseline_unusable: no collect"),
-            _gate("oracle", passed=True),
-        ]
+
+
+def _run_implement_x(tmp_path: Path, new_src: str):
+    repo = tmp_path / "repo"
+    for rel, content in {
+        "src/mathx.py": _IMPLEMENT_X_BASE,
+        "tests/test_mathx.py": _IMPLEMENT_X_TEST,
+        "pytest.ini": "[pytest]\npythonpath = src\n",
+    }.items():
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text(content, encoding="utf-8")
+    oracle_path = _write_oracle(tmp_path / "oracle.json", _IMPLEMENT_X_ORACLE)
+    patch = ProposeToolRequest(
+        tool_request=ToolRequest(
+            tool=ToolName.PATCH_FILE, path="src/mathx.py", old_str=_IMPLEMENT_X_BASE,
+            new_str=new_src,
+        )
     )
+    return run_task(
+        _contract(description="implement double(x) in src/mathx.py"),
+        repo,
+        ScriptedProvider([patch, ClaimDone(message="done")]),
+        gates=(PytestGate(),),
+        evidence_base_dir=tmp_path / "evidence",
+        model_provider="test",
+        model="scripted",
+        **_oracle_kwargs(oracle_path),
+    )
+
+
+_D5_REASON = (
+    "v0.2 decision 5, retired by plan commit 4: baseline_unusable still forces "
+    "NEEDS_HUMAN even when an oracle gives a verdict"
+)
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=_D5_REASON)
+def test_baseline_unusable_with_oracle_and_everything_passing_is_pass(tmp_path: Path) -> None:
+    _, decision, _ = _run_implement_x(tmp_path, _DOUBLE_OK)
     assert decision.final == FinalDecision.PASS, decision.reason
-    assert "baseline_unusable" in decision.reason
+    assert "pytest baseline unusable (informational)" in decision.reason
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=_D5_REASON)
+def test_baseline_unusable_with_oracle_still_needs_the_final_pytest(tmp_path: Path) -> None:
+    _, decision, _ = _run_implement_x(tmp_path, _DOUBLE_WRONG_ON_VISIBLE)
+    assert decision.final == FinalDecision.FAIL, decision.reason
+    assert decision.tests_pass is False
+
+
+def test_baseline_unusable_with_oracle_and_a_skip_is_never_pass(tmp_path: Path) -> None:
+    # Without a baseline the skip cannot be told apart from one the agent's
+    # code produced: NEEDS_HUMAN after commit 4. Today it is NEEDS_HUMAN too
+    # (baseline_unusable alone), so this is a plain test; what it guards is
+    # that commit 4 does not turn it into a PASS.
+    _, decision, _ = _run_implement_x(tmp_path, _DOUBLE_SKIPS_UNDER_PYTEST)
+    assert decision.final == FinalDecision.NEEDS_HUMAN, decision.reason
 
 
 def test_control_baseline_unusable_without_oracle_still_needs_human() -> None:
@@ -543,7 +610,6 @@ def test_expected_never_reaches_the_container(tmp_path: Path, monkeypatch) -> No
     not in -e env, not in a -v mount), not in stdin, and not in any file of
     the workspace; the oracle file's directory is never mounted."""
     from aigis.evaluation.oracle import OracleGate, load_oracle
-
     from aigis.sandbox import docker_sandbox
 
     repo = _write_repo(tmp_path / "repo", src=_FIXED)

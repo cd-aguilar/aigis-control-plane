@@ -7,16 +7,46 @@ The task fixtures live in code (benchmark_tasks.py), not as static files
 under examples/, so there is exactly one source of truth; this script is
 how that source of truth gets materialized to disk. Regenerate after
 editing a task: ``python scripts/generate_examples.py``.
+
+v0.2 D7/D9: each task also gets ``oracle.json`` (hidden cases) and
+``solution.patch`` (reference fix) NEXT TO ``repo/``, never inside it: the
+sandbox copies ``repo/`` only, so neither can reach the agent's workspace.
 """
 
 from __future__ import annotations
 
+import difflib
+import json
 import shutil
 from pathlib import Path
 
-from aigis.evaluation.benchmark_tasks import TASKS, materialize
+from aigis.evaluation.benchmark_tasks import TASKS, BenchmarkTask, materialize
 
 EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples" / "tasks"
+
+
+def oracle_json(task: BenchmarkTask) -> str:
+    return json.dumps(task.oracle, indent=2) + "\n"
+
+
+def solution_patch(task: BenchmarkTask) -> str:
+    """Unified diff (a/ b/ prefixes, ``git apply``-able) from the task's
+    base files to its reference solution."""
+    chunks = []
+    for path in sorted(task.reference_files):
+        before = task.setup_files.get(path, "")
+        after = task.reference_files[path]
+        chunks.append(
+            "".join(
+                difflib.unified_diff(
+                    before.splitlines(keepends=True),
+                    after.splitlines(keepends=True),
+                    fromfile=f"a/{path}",
+                    tofile=f"b/{path}",
+                )
+            )
+        )
+    return "".join(chunks)
 
 
 def main() -> None:
@@ -31,6 +61,8 @@ def main() -> None:
         (task_dir / "contract.json").write_text(
             task.contract.model_dump_json(indent=2), encoding="utf-8"
         )
+        (task_dir / "oracle.json").write_text(oracle_json(task), encoding="utf-8")
+        (task_dir / "solution.patch").write_text(solution_patch(task), encoding="utf-8")
         print(f"wrote {task_dir}")
 
 

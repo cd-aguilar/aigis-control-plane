@@ -1,0 +1,11 @@
+--- a/src/accounts.py
++++ b/src/accounts.py
+@@ -3,4 +3,8 @@
+         self.balance = balance
+ 
+     def withdraw(self, amount: float) -> None:
++        if amount < 0:
++            raise ValueError("amount must not be negative")
++        if amount > self.balance:
++            raise ValueError("insufficient balance")
+         self.balance -= amount

@@ -1,0 +1,8 @@
+--- a/src/calculator.py
++++ b/src/calculator.py
+@@ -3,4 +3,4 @@
+ 
+ 
+ def subtract(a, b):
+-    return a + b  # bug: should subtract
++    return a - b

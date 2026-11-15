@@ -1,0 +1,6 @@
+--- a/config/settings.yaml
++++ b/config/settings.yaml
+@@ -1,2 +1,2 @@
+-max_retries: 1
++max_retries: 3
+ timeout_seconds: 30

@@ -1,0 +1,6 @@
+--- a/src/string_utils.py
++++ b/src/string_utils.py
+@@ -1,2 +1,2 @@
+ def reverse_words(text: str) -> str:
+-    raise NotImplementedError
++    return ' '.join(reversed(text.split()))

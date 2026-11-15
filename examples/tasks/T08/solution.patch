@@ -1,0 +1,12 @@
+--- a/src/validators.py
++++ b/src/validators.py
+@@ -1,5 +1,8 @@
++import re
++
++
+ def is_valid_username(name: str) -> bool:
+     """A valid username is 3 to 20 characters long and contains only
+     letters, digits, and underscores.
+     """
+-    return len(name) >= 3
++    return re.fullmatch(r"[A-Za-z0-9_]{3,20}", name) is not None

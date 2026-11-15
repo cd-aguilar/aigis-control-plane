@@ -1,0 +1,45 @@
+{
+  "notes": "subtract() on inputs the visible test does not use; add() is a control that the fix must not break.",
+  "cases": [
+    {
+      "module": "calculator",
+      "function": "subtract",
+      "args": [
+        10,
+        4
+      ],
+      "kwargs": {},
+      "expected": 6
+    },
+    {
+      "module": "calculator",
+      "function": "subtract",
+      "args": [
+        0,
+        7
+      ],
+      "kwargs": {},
+      "expected": -7
+    },
+    {
+      "module": "calculator",
+      "function": "subtract",
+      "args": [
+        -2,
+        -5
+      ],
+      "kwargs": {},
+      "expected": 3
+    },
+    {
+      "module": "calculator",
+      "function": "add",
+      "args": [
+        1,
+        1
+      ],
+      "kwargs": {},
+      "expected": 2
+    }
+  ]
+}

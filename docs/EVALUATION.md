@@ -136,6 +136,12 @@ para el agente.
 - **N=3 por tarea.** Alcanza para ver estabilidad por tarea, no es una muestra estadísticamente significativa.
 - **T06 sigue siendo la tarea más cara, y es una propiedad de la tarea, no ruido.** Sus tokens de salida van de 1.484 a 1.866 en
   las 3 corridas, unas 3 veces cualquier otra (pre-fix: 2.104, N=1). La latencia sigue el mismo patrón (20.2 s).
+  **Hallazgo del 15/11 (al escribir los oráculos de v0.2): T06 se contradecía.** La descripción y el código decían que
+  `apply_discount` devuelve el precio con descuento y que el caso redondo "ya pasaba"; los tests visibles esperan **el monto
+  del descuento** (`apply_discount(200, 10) == 20.0`) y la base fallaba los dos. Las 5 corridas PASS que hay en `evidence/`
+  siguieron a los tests (`return price * percent / 100`). Las instrucciones contradictorias probablemente explican que T06 fuera
+  la tarea más cara. Se corrigió la descripción (y el comentario del código base) para que coincida con los tests: **eso cambia
+  el prompt de T06**, así que en el benchmark de v0.2 T06 no es comparable 1:1 con estas corridas.
 - **Latencia:** la definición no cambió desde `ec85ff4` (29/8). Va desde `TaskState.started_at` hasta el final del último
   intento del agente: mide el loop del agente (llamadas al LLM y ejecución de tools) y deja afuera la copia del sandbox, la línea
   base y los gates. Es comparable con agosto, con un matiz: ahora cada tool corre en un contenedor, y aun así el promedio bajó

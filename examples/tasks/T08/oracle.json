@@ -1,0 +1,68 @@
+{
+  "notes": "'letters' is read as ASCII [A-Za-z] (confirmed by Dario). Non-ASCII letters are excluded on purpose: the docstring does not say whether they count. Lengths 3 and 20 are the inclusive bounds.",
+  "cases": [
+    {
+      "module": "validators",
+      "function": "is_valid_username",
+      "args": [
+        "abc"
+      ],
+      "kwargs": {},
+      "expected": true
+    },
+    {
+      "module": "validators",
+      "function": "is_valid_username",
+      "args": [
+        "A1_"
+      ],
+      "kwargs": {},
+      "expected": true
+    },
+    {
+      "module": "validators",
+      "function": "is_valid_username",
+      "args": [
+        "aaaaaaaaaaaaaaaaaaaa"
+      ],
+      "kwargs": {},
+      "expected": true
+    },
+    {
+      "module": "validators",
+      "function": "is_valid_username",
+      "args": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "kwargs": {},
+      "expected": false
+    },
+    {
+      "module": "validators",
+      "function": "is_valid_username",
+      "args": [
+        "hello world"
+      ],
+      "kwargs": {},
+      "expected": false
+    },
+    {
+      "module": "validators",
+      "function": "is_valid_username",
+      "args": [
+        "user-name"
+      ],
+      "kwargs": {},
+      "expected": false
+    },
+    {
+      "module": "validators",
+      "function": "is_valid_username",
+      "args": [
+        ""
+      ],
+      "kwargs": {},
+      "expected": false
+    }
+  ]
+}

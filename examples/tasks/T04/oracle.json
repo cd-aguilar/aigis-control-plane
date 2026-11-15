@@ -1,0 +1,45 @@
+{
+  "notes": "Leading/trailing whitespace (spaces and a tab) on first and last name, in both functions. Inner spaces in a name are not tested: the task only asks for strip + title.",
+  "cases": [
+    {
+      "module": "formatting",
+      "function": "format_full_name",
+      "args": [
+        " ada",
+        "lovelace  "
+      ],
+      "kwargs": {},
+      "expected": "Ada Lovelace"
+    },
+    {
+      "module": "formatting",
+      "function": "format_full_name",
+      "args": [
+        "grace",
+        "hopper"
+      ],
+      "kwargs": {},
+      "expected": "Grace Hopper"
+    },
+    {
+      "module": "formatting",
+      "function": "format_short_name",
+      "args": [
+        "\talan ",
+        "turing"
+      ],
+      "kwargs": {},
+      "expected": "A. Turing"
+    },
+    {
+      "module": "formatting",
+      "function": "format_short_name",
+      "args": [
+        "linus",
+        "torvalds "
+      ],
+      "kwargs": {},
+      "expected": "L. Torvalds"
+    }
+  ]
+}

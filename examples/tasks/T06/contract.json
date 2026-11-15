@@ -1,6 +1,6 @@
 {
   "task_id": "T06",
-  "description": "A recent change to apply_discount() in src/inventory.py introduced a regression: it now uses integer floor division, which silently rounds down the discount amount for non-round percentages. Fix it so tests/test_inventory.py passes again, without breaking the already-passing round-percent case.",
+  "description": "apply_discount(price, percent) in src/inventory.py must return the discount amount: percent% of price (apply_discount(200, 10) is 20.0). A recent change introduced a regression: it now returns the price minus the discount, and computes the discount with integer floor division. Fix it so it returns the exact discount amount and tests/test_inventory.py passes.",
   "allowed_paths": [
     "src/"
   ],
@@ -29,5 +29,6 @@
   "max_tool_calls": 20,
   "max_files_changed": 2,
   "risk_level": "LOW",
+  "deny_escalation": "security",
   "contract_version": "2.0"
 }

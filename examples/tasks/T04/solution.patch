@@ -1,0 +1,15 @@
+--- a/src/formatting.py
++++ b/src/formatting.py
+@@ -1,6 +1,10 @@
++def _clean(name):
++    return name.strip().title()
++
++
+ def format_full_name(first, last):
+-    return first.title() + ' ' + last.title()
++    return _clean(first) + ' ' + _clean(last)
+ 
+ 
+ def format_short_name(first, last):
+-    return first.title()[0] + '. ' + last.title()
++    return _clean(first)[0] + '. ' + _clean(last)
